@@ -1,7 +1,1 @@
-export function TeacherDashboardPage() {
-  return (
-    <div className="rounded-3xl border border-slate-200 bg-white p-8 shadow-sm">
-      Teacher dashboard placeholder.
-    </div>
-  );
-}
+export { TeacherOverviewPage as TeacherDashboardPage } from "./TeacherOverviewPage";

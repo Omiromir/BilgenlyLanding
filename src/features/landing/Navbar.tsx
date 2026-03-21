@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import logo from "../../assets/logo.png";
 import { LandingButton } from "./LandingButton";
+import { BilgenlyLogo } from "../../components/shared/BilgenlyLogo";
 
 export function Navbar() {
   const [isScrolled, setIsScrolled] = useState(false);
@@ -42,16 +43,7 @@ export function Navbar() {
             window.scrollTo({ top: 0, behavior: "smooth" });
           }}
         >
-          <div className="h-10 w-10 sm:h-[52px] sm:w-[52px]">
-            <img
-              alt="Bilgenly logo"
-              className="h-full w-full object-contain"
-              src={logo}
-            />
-          </div>
-          <span className="hidden font-['Anonymous_Pro',monospace] text-[18px] font-bold text-[#041320] sm:text-[24px] md:inline">
-            Bilgenly
-          </span>
+          <BilgenlyLogo  />
         </Link>
 
         <div className="hidden items-center gap-[35px] font-['Montserrat',sans-serif] text-[16px] text-[#374151] md:flex">

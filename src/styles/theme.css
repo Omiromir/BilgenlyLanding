@@ -8,7 +8,7 @@
   --card-foreground: oklch(0.145 0 0);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.145 0 0);
-  --primary: #030213;
+  --primary: #5b4cf0;
   --primary-foreground: oklch(1 0 0);
   --secondary: oklch(0.95 0.0058 264.53);
   --secondary-foreground: #030213;
@@ -24,7 +24,7 @@
   --switch-background: #cbced4;
   --font-weight-medium: 500;
   --font-weight-normal: 400;
-  --ring: oklch(0.708 0 0);
+  --ring: #5b4cf0;
   --chart-1: oklch(0.646 0.222 41.116);
   --chart-2: oklch(0.6 0.118 184.704);
   --chart-3: oklch(0.398 0.07 227.392);
@@ -33,7 +33,7 @@
   --radius: 0.625rem;
   --sidebar: oklch(0.985 0 0);
   --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: #030213;
+  --sidebar-primary: #5b4cf0;
   --sidebar-primary-foreground: oklch(0.985 0 0);
   --sidebar-accent: oklch(0.97 0 0);
   --sidebar-accent-foreground: oklch(0.205 0 0);
@@ -82,6 +82,39 @@
   --browser-address-bar: #f1f1f1;
   --browser-icon: #8c8c8c;
   --browser-text: #151515;
+
+  /* Dashboard palette derived from Bilgenly logo + landing/auth system */
+  --dashboard-bg: #f5f7fc;
+  --dashboard-bg-elevated: #fbfcff;
+  --dashboard-surface: rgba(255, 255, 255, 0.96);
+  --dashboard-surface-muted: #f7f9fe;
+  --dashboard-surface-accent: #eef1ff;
+  --dashboard-border: #d9e1ef;
+  --dashboard-border-soft: #e8edf6;
+  --dashboard-text: #202b45;
+  --dashboard-text-strong: #13203a;
+  --dashboard-text-soft: #62708b;
+  --dashboard-text-faint: #8b97ad;
+  --dashboard-brand: #5b4cf0;
+  --dashboard-brand-strong: #5146df;
+  --dashboard-brand-bright: #2191f6;
+  --dashboard-brand-soft: #ebe9ff;
+  --dashboard-brand-soft-alt: #eff6ff;
+  --dashboard-success: #2ca36b;
+  --dashboard-success-soft: #eaf8f1;
+  --dashboard-warning: #c3892a;
+  --dashboard-warning-soft: #fff5e3;
+  --dashboard-danger: #cb5b73;
+  --dashboard-danger-soft: #fff0f4;
+  --dashboard-shadow-soft: 0 14px 38px rgba(36, 48, 74, 0.07);
+  --dashboard-shadow-card: 0 10px 30px rgba(36, 48, 74, 0.06);
+  --dashboard-shadow-brand: 0 18px 42px rgba(91, 76, 240, 0.18);
+  --dashboard-gradient: linear-gradient(
+    135deg,
+    #5b4cf0 0%,
+    #4d62ed 48%,
+    #7c3aed 100%
+  );
 }
 
 .dark {
@@ -220,5 +253,86 @@
     font-size: var(--text-base);
     font-weight: var(--font-weight-normal);
     line-height: 1.5;
+  }
+}
+
+@layer components {
+  .dashboard-shell {
+    background:
+      radial-gradient(circle at top left, rgba(91, 76, 240, 0.05), transparent 26%),
+      linear-gradient(180deg, var(--dashboard-bg) 0%, var(--dashboard-bg-elevated) 100%);
+  }
+
+  .dashboard-topbar {
+    background: rgba(255, 255, 255, 0.88);
+    border-color: var(--dashboard-border-soft);
+    box-shadow: 0 8px 24px rgba(36, 48, 74, 0.04);
+  }
+
+  .dashboard-sidebar {
+    background: rgba(255, 255, 255, 0.94);
+    border-color: var(--dashboard-border-soft);
+  }
+
+  .dashboard-card {
+    background: var(--dashboard-surface);
+    border-color: var(--dashboard-border-soft);
+    box-shadow: var(--dashboard-shadow-card);
+  }
+
+  .dashboard-card-muted {
+    background: var(--dashboard-surface-muted);
+    border-color: var(--dashboard-border-soft);
+  }
+
+  .dashboard-hero {
+    background: var(--dashboard-gradient);
+    box-shadow: var(--dashboard-shadow-brand);
+  }
+
+  .dashboard-button-primary {
+    background: var(--dashboard-brand);
+    color: #fff;
+    box-shadow: 0 10px 24px rgba(91, 76, 240, 0.18);
+  }
+
+  .dashboard-button-primary:hover {
+    background: var(--dashboard-brand-strong);
+  }
+
+  .dashboard-button-secondary {
+    background: #fff;
+    border: 1px solid var(--dashboard-border);
+    color: var(--dashboard-text);
+  }
+
+  .dashboard-button-secondary:hover {
+    background: var(--dashboard-surface-muted);
+  }
+
+  .dashboard-badge {
+    background: var(--dashboard-brand-soft);
+    color: var(--dashboard-brand-strong);
+  }
+
+  .dashboard-badge-soft {
+    background: var(--dashboard-brand-soft-alt);
+    color: var(--dashboard-brand-bright);
+  }
+
+  .dashboard-input {
+    background: var(--dashboard-surface-muted);
+    border-color: var(--dashboard-border-soft);
+    color: var(--dashboard-text);
+  }
+
+  .dashboard-input::placeholder {
+    color: var(--dashboard-text-faint);
+  }
+
+  .dashboard-nav-active {
+    background: var(--dashboard-brand);
+    color: #fff;
+    box-shadow: 0 14px 28px rgba(91, 76, 240, 0.22);
   }
 }

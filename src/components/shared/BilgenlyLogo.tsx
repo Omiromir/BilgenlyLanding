@@ -3,9 +3,13 @@ import logoPng from "../../assets/logo.png";
 
 interface BilgenlyLogoProps {
   size?: number;
+  showText?: boolean;
 }
 
-export function BilgenlyLogo({ size = 40 }: BilgenlyLogoProps) {
+export function BilgenlyLogo({
+  size = 40,
+  showText = true,
+}: BilgenlyLogoProps) {
   return (
     <Link to="/" style={{ display: "inline-flex", gap: 8, alignItems: "center" }}>
       <img
@@ -13,7 +17,9 @@ export function BilgenlyLogo({ size = 40 }: BilgenlyLogoProps) {
         alt="Bilgenly Logo"
         style={{ width: size, height: size, display: "block" }}
       />
-      <span className="auth-brand-name">Bilgenly</span>
+      {showText ? (
+        <span className="auth-brand-name text-xl font-semibold">Bilgenly</span>
+      ) : null}
     </Link>
   );
 }
