@@ -1,5 +1,7 @@
 
-  ## Running the code
+  ## Running the front
+
+  Run `cd ./frontend`
 
   Run `npm i` to install the dependencies.
 
