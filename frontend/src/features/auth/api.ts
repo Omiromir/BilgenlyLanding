@@ -72,3 +72,13 @@ export async function signUp(data: SignUpFormValues) {
 export async function requestPasswordReset(_: ResetPasswordFormValues) {
     return new Promise((resolve) => window.setTimeout(resolve, 400));
 }
+export async function getMe() {
+    const response = await fetch(`${API_URL}/api/auth/me`, {
+        headers: {
+            "Authorization": `Bearer ${getToken()}`
+        }
+    });
+
+    if (!response.ok) throw new Error("Unauthorized");
+    return response.json();
+}
