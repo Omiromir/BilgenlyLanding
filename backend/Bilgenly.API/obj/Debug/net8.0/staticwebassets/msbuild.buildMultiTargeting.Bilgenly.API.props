@@ -1,3 +1,0 @@
-﻿<Project>
-  <Import Project="..\build\Bilgenly.API.props" />
-</Project>
