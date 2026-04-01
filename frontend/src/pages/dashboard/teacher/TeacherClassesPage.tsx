@@ -1,5 +1,5 @@
 import { useDeferredValue, useEffect, useState } from "react";
-import { Archive, BookOpen, Trash2, Users } from "lucide-react";
+import { Archive, BookOpen, Trash2, Users } from "../../../components/icons/AppIcons";
 import {
   AlertDialog,
   AlertDialogAction,

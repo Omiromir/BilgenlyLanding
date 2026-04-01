@@ -7,7 +7,7 @@ import {
   Menu,
   Settings,
   User,
-} from "lucide-react";
+} from "../../../components/icons/AppIcons";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router";
 import { useAuth } from "../../../app/providers/AuthProvider";

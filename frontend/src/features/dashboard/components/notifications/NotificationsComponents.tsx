@@ -6,7 +6,7 @@ import {
   MailOpen,
   MailX,
   UserPlus,
-} from "lucide-react";
+} from "../../../../components/icons/AppIcons";
 import { cn } from "../../../../components/ui/utils";
 import { EmptyStateBlock } from "../EmptyStateBlock";
 import {

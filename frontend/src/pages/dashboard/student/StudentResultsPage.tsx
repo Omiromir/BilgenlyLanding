@@ -3,7 +3,7 @@ import {
   CheckCircle2,
   Clock3,
   TrendingUp,
-} from "lucide-react";
+} from "../../../components/icons/AppIcons";
 import {
   CartesianGrid,
   Line,

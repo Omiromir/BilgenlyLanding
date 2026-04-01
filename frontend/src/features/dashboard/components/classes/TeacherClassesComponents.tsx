@@ -13,7 +13,7 @@ import {
   SearchX,
   Trash2,
   Users,
-} from "lucide-react";
+} from "../../../../components/icons/AppIcons";
 import { cn } from "../../../../components/ui/utils";
 import {
   DropdownMenu,

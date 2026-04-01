@@ -11,7 +11,7 @@ import {
   Sparkles,
   Trash2,
   UserRound,
-} from "lucide-react";
+} from "../../../components/icons/AppIcons";
 import { Link, useLocation, useNavigate } from "react-router";
 import { useAuth } from "../../../app/providers/AuthProvider";
 import { useTeacherClasses } from "../../../app/providers/TeacherClassesProvider";
