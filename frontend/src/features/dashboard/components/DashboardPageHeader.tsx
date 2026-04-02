@@ -23,7 +23,6 @@ interface DashboardPageHeaderProps {
 export function DashboardPageHeader({
   eyebrow,
   title,
-  subtitle,
   badge,
   ctaLabel,
   ctaTo,
@@ -72,15 +71,7 @@ export function DashboardPageHeader({
           ) : null}
         </div>
 
-        <p
-          className={cn(
-            dashboardPageSubtitleClassName,
-            "text-lg leading-8",
-            align === "center" ? "mx-auto text-center" : "text-left",
-          )}
-        >
-          {subtitle}
-        </p>
+       
       </div>
 
       {resolvedActions ? (

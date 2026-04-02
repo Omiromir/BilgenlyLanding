@@ -2,18 +2,17 @@ import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import {
   Archive,
-  CheckCircle2,
   BookOpen,
-  CalendarDays,
-  Mail,
   FolderArchive,
   Layers3,
+  Mail,
   MoreVertical,
   PencilLine,
   SearchX,
   Trash2,
   Users,
 } from "../../../../components/icons/AppIcons";
+import { Avatar, AvatarFallback } from "../../../../components/ui/avatar";
 import { cn } from "../../../../components/ui/utils";
 import {
   DropdownMenu,
@@ -37,7 +36,6 @@ import {
   DashboardSearchField,
   DashboardSurface,
   dashboardButtonVariants,
-  dashboardIconTextRowClassName,
   dashboardInputVariants,
   dashboardInsetBlockClassName,
   dashboardMetaTextClassName,
@@ -74,6 +72,15 @@ const emptyTeacherClassFormValues: TeacherClassFormValues = {
 const emptyAddStudentsFormValues: AddStudentsFormValues = {
   emails: "",
 };
+
+function getTeacherStudentInitials(fullName: string) {
+  return fullName
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? "")
+    .join("");
+}
 
 interface TeacherClassStatusBadgeProps {
   status: TeacherClassStatus;
@@ -162,26 +169,14 @@ export function TeacherClassCard({
   onDelete,
 }: TeacherClassCardProps) {
   const summaryRows = [
-    {
-      icon: Users,
-      label: `${teacherClass.studentCount} ${
-        teacherClass.studentCount === 1 ? "student" : "students"
-      }`,
-    },
-    {
-      icon: BookOpen,
-      label: `${teacherClass.quizCount} ${
-        teacherClass.quizCount === 1 ? "quiz" : "quizzes"
-      }`,
-    },
-    {
-      icon: CalendarDays,
-      label: `Created ${formatTeacherClassDate(teacherClass.createdAt)}`,
-    },
-    {
-      icon: Layers3,
-      label: `Code ${teacherClass.inviteCode}`,
-    },
+    `${teacherClass.studentCount} ${
+      teacherClass.studentCount === 1 ? "student" : "students"
+    }`,
+    `${teacherClass.quizCount} ${
+      teacherClass.quizCount === 1 ? "quiz" : "quizzes"
+    }`,
+    `Code ${teacherClass.inviteCode}`,
+    `Updated ${formatTeacherClassDate(teacherClass.updatedAt)}`,
   ];
 
   return (
@@ -189,7 +184,7 @@ export function TeacherClassCard({
       radius="xl"
       padding="md"
       className={cn(
-        "h-full cursor-pointer border transition",
+        "cursor-pointer border transition",
         isSelected &&
           "border-[var(--dashboard-brand)] shadow-[0_18px_40px_rgba(43,122,243,0.12)]",
       )}
@@ -203,9 +198,9 @@ export function TeacherClassCard({
         }
       }}
     >
-      <article className="flex h-full flex-col">
-        <div className="flex items-start justify-between gap-3">
-          <div className="space-y-3">
+      <article className="space-y-4">
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0 space-y-3">
             <div className="flex flex-wrap gap-2">
               <TeacherClassStatusBadge status={teacherClass.status} />
               {teacherClass.subject ? (
@@ -213,11 +208,11 @@ export function TeacherClassCard({
               ) : null}
             </div>
 
-            <div>
+            <div className="space-y-2">
               <h3 className="text-[1.2rem] font-semibold text-[var(--dashboard-text-strong)]">
                 {teacherClass.name}
               </h3>
-              <p className="mt-3 text-sm leading-6 text-[var(--dashboard-text-soft)]">
+              <p className="text-sm leading-6 text-[var(--dashboard-text-soft)]">
                 {teacherClass.description ||
                   "No class description yet. Add one to explain the purpose, group, or learning focus."}
               </p>
@@ -232,17 +227,16 @@ export function TeacherClassCard({
           />
         </div>
 
-        <div className="mt-5 grid gap-2.5 sm:grid-cols-2">
-          {summaryRows.map((row) => {
-            const Icon = row.icon;
-
-            return (
-              <div key={`${teacherClass.id}-${row.label}`} className={dashboardIconTextRowClassName}>
-                <Icon className="h-4 w-4" />
-                <span>{row.label}</span>
-              </div>
-            );
-          })}
+        <div className="flex flex-wrap gap-2">
+          {summaryRows.map((item) => (
+            <DashboardBadge
+              key={`${teacherClass.id}-${item}`}
+              tone="neutral"
+              size="md"
+            >
+              {item}
+            </DashboardBadge>
+          ))}
         </div>
       </article>
     </DashboardSurface>
@@ -489,6 +483,8 @@ export function TeacherClassStudentActionsMenu({
 interface AddStudentsDialogProps {
   open: boolean;
   teacherClass: TeacherClassRecord | null;
+  availableClasses?: TeacherClassRecord[];
+  onSelectedClassChange?: (classId: string) => void;
   onOpenChange: (open: boolean) => void;
   onSubmit: (emails: string[]) => void;
 }
@@ -496,6 +492,8 @@ interface AddStudentsDialogProps {
 export function AddStudentsDialog({
   open,
   teacherClass,
+  availableClasses,
+  onSelectedClassChange,
   onOpenChange,
   onSubmit,
 }: AddStudentsDialogProps) {
@@ -594,6 +592,28 @@ export function AddStudentsDialog({
           </div>
 
           <div className="space-y-5 px-6 py-6">
+            {availableClasses && availableClasses.length > 1 && onSelectedClassChange ? (
+              <label className="block space-y-2">
+                <span className="text-sm font-medium text-[var(--dashboard-text-strong)]">
+                  Class
+                </span>
+                <select
+                  value={teacherClass?.id ?? ""}
+                  onChange={(event) => onSelectedClassChange(event.target.value)}
+                  className={cn(
+                    dashboardSelectVariants({ size: "md" }),
+                    "w-full border-[var(--dashboard-border-soft)] bg-[var(--dashboard-surface-muted)]",
+                  )}
+                >
+                  {availableClasses.map((option) => (
+                    <option key={option.id} value={option.id}>
+                      {option.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
+
             <label className="block space-y-2">
               <span className="text-sm font-medium text-[var(--dashboard-text-strong)]">
                 Student emails
@@ -722,9 +742,7 @@ interface TeacherClassDetailsPanelProps {
   teacherClass: TeacherClassRecord | null;
   hasClasses: boolean;
   membershipFeedback?: string | null;
-  onOpenAddStudents: () => void;
-  onRemoveStudent: (student: TeacherClassStudent) => void;
-  onResendInvite: (student: TeacherClassStudent) => void;
+  onOpenAddStudents?: () => void;
   onRemoveAssignedQuiz: (quiz: TeacherClassAssignedQuiz) => void;
 }
 
@@ -733,49 +751,48 @@ export function TeacherClassDetailsPanel({
   hasClasses,
   membershipFeedback,
   onOpenAddStudents,
-  onRemoveStudent,
-  onResendInvite,
   onRemoveAssignedQuiz,
 }: TeacherClassDetailsPanelProps) {
   if (!teacherClass) {
     return hasClasses ? (
       <EmptyStateBlock
         title="Select a class"
-        description="Choose a class from the list to view its details, manage core settings, and prepare the next teaching steps."
         icon={Users}
         className="h-full"
       />
     ) : (
       <EmptyStateBlock
         title="Your class workspace will appear here"
-        description="Once you create a class, this panel becomes the home for members, assigned quizzes, and classroom activity."
         icon={Layers3}
         className="h-full"
       />
     );
   }
 
-  const activityItems = [
+  const quickStats = [
     {
-      label: "Created",
-      value: formatTeacherClassDate(teacherClass.createdAt),
+      label: "Invite code",
+      value: teacherClass.inviteCode,
+      emphasizeWideTracking: true,
+    },
+    {
+      label: "Students",
+      value: String(teacherClass.studentCount),
+    },
+    {
+      label: "Assigned quizzes",
+      value: String(teacherClass.quizCount),
     },
     {
       label: "Last updated",
       value: formatTeacherClassDate(teacherClass.updatedAt),
     },
-    {
-      label: "Status",
-      value:
-        teacherClass.status === "active"
-          ? "Active and ready for learning activity."
-          : "Archived and hidden from active classroom workflows.",
-    },
   ];
+  const studentPreview = teacherClass.students.slice(0, 4);
 
   return (
     <DashboardSurface radius="xl" padding="md" className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-4">
+      <div className="space-y-4">
         <div className="space-y-3">
           <div className="flex flex-wrap gap-2">
             <TeacherClassStatusBadge status={teacherClass.status} />
@@ -788,61 +805,12 @@ export function TeacherClassDetailsPanel({
             <h2 className="text-[1.7rem] font-semibold tracking-[-0.03em] text-[var(--dashboard-text-strong)]">
               {teacherClass.name}
             </h2>
-            <p className="mt-3 text-sm leading-6 text-[var(--dashboard-text-soft)]">
-              {teacherClass.description ||
-                "No description added yet. Use this area to clarify how this class will be used."}
-            </p>
+            {teacherClass.description ? (
+              <p className="mt-3 max-w-2xl text-sm leading-6 text-[var(--dashboard-text-soft)]">
+                {teacherClass.description}
+              </p>
+            ) : null}
           </div>
-        </div>
-      </div>
-
-      <div className="grid gap-3 sm:grid-cols-2">
-        <div className={dashboardInsetBlockClassName}>
-          <p className={dashboardMetaTextClassName}>Invite code</p>
-          <p className="mt-2 text-lg font-semibold tracking-[0.2em] text-[var(--dashboard-text-strong)]">
-            {teacherClass.inviteCode}
-          </p>
-        </div>
-        <div className={dashboardInsetBlockClassName}>
-          <p className={dashboardMetaTextClassName}>Created date</p>
-          <p className="mt-2 text-lg font-semibold text-[var(--dashboard-text-strong)]">
-            {formatTeacherClassDate(teacherClass.createdAt)}
-          </p>
-        </div>
-        <div className={dashboardInsetBlockClassName}>
-          <p className={dashboardMetaTextClassName}>Students</p>
-          <p className="mt-2 text-lg font-semibold text-[var(--dashboard-text-strong)]">
-            {teacherClass.studentCount}
-          </p>
-        </div>
-        <div className={dashboardInsetBlockClassName}>
-          <p className={dashboardMetaTextClassName}>Assigned quizzes</p>
-          <p className="mt-2 text-lg font-semibold text-[var(--dashboard-text-strong)]">
-            {teacherClass.quizCount}
-          </p>
-        </div>
-      </div>
-
-      <div className="space-y-4">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <h3 className="text-lg font-semibold text-[var(--dashboard-text-strong)]">
-              Students
-            </h3>
-            <p className="mt-1 text-sm leading-6 text-[var(--dashboard-text-soft)]">
-              View members, invite more students, and prepare the class for upcoming quiz work.
-            </p>
-          </div>
-
-          <DashboardButton
-            type="button"
-            size="lg"
-            variant="secondary"
-            onClick={onOpenAddStudents}
-          >
-            <Mail className="h-4 w-4" />
-            Add Students
-          </DashboardButton>
         </div>
 
         {membershipFeedback ? (
@@ -852,10 +820,47 @@ export function TeacherClassDetailsPanel({
             </p>
           </div>
         ) : null}
+      </div>
 
-        {teacherClass.students.length ? (
+      <div className="grid gap-3 sm:grid-cols-2">
+        {quickStats.map((item) => (
+          <div key={`${teacherClass.id}-${item.label}`} className={dashboardInsetBlockClassName}>
+            <p className={dashboardMetaTextClassName}>{item.label}</p>
+            <p
+              className={cn(
+                "mt-2 text-lg font-semibold text-[var(--dashboard-text-strong)]",
+                item.emphasizeWideTracking ? "tracking-[0.18em]" : undefined,
+              )}
+            >
+              {item.value}
+            </p>
+          </div>
+        ))}
+      </div>
+
+      <div className="space-y-4">
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <h3 className="text-lg font-semibold text-[var(--dashboard-text-strong)]">
+              Student Snapshot
+            </h3>
+          </div>
+          {onOpenAddStudents ? (
+            <DashboardButton
+              type="button"
+              size="sm"
+              variant="secondary"
+              onClick={onOpenAddStudents}
+            >
+              <Mail className="h-4 w-4" />
+              Add Students
+            </DashboardButton>
+          ) : null}
+        </div>
+
+        {studentPreview.length ? (
           <div className="space-y-3">
-            {teacherClass.students.map((student) => (
+            {studentPreview.map((student) => (
               <div
                 key={student.id}
                 className={cn(
@@ -863,29 +868,26 @@ export function TeacherClassDetailsPanel({
                   "flex items-center justify-between gap-4",
                 )}
               >
-                <div>
-                  <p className="font-semibold text-[var(--dashboard-text-strong)]">
-                    {student.fullName}
-                  </p>
-                  <p className="mt-1 text-sm text-[var(--dashboard-text-soft)]">
-                    {student.email}
-                  </p>
+                <div className="flex min-w-0 items-center gap-3">
+                  <Avatar className="h-10 w-10 border border-[var(--dashboard-border-soft)] bg-[var(--dashboard-brand-soft-alt)]">
+                    <AvatarFallback className="bg-[var(--dashboard-brand-soft-alt)] text-sm font-semibold text-[var(--dashboard-brand)]">
+                      {getTeacherStudentInitials(student.fullName)}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="min-w-0">
+                    <p className="truncate font-semibold text-[var(--dashboard-text-strong)]">
+                      {student.fullName}
+                    </p>
+                    <p className="truncate text-sm text-[var(--dashboard-text-soft)]">
+                      {student.email}
+                    </p>
+                  </div>
                 </div>
                 <div className="flex items-center gap-3">
                   <TeacherStudentStatusBadge status={student.status} />
                   <p className="text-sm text-[var(--dashboard-text-soft)]">
-                    {student.status === "active"
-                      ? "Joined"
-                      : student.status === "declined"
-                        ? "Declined"
-                        : "Invited"}{" "}
                     {formatTeacherClassDate(student.joinedAt)}
                   </p>
-                  <TeacherClassStudentActionsMenu
-                    student={student}
-                    onRemove={() => onRemoveStudent(student)}
-                    onResendInvite={() => onResendInvite(student)}
-                  />
                 </div>
               </div>
             ))}
@@ -893,11 +895,20 @@ export function TeacherClassDetailsPanel({
         ) : (
           <EmptyStateBlock
             title="No students in this class yet"
-            description="This class is ready, but no students have joined yet. Use Add Students to invite members and start building the roster."
             icon={Users}
             className="border-dashed"
           />
         )}
+
+        {teacherClass.students.length > studentPreview.length ? (
+          <p className="text-sm text-[var(--dashboard-text-soft)]">
+            {teacherClass.students.length - studentPreview.length} more{" "}
+            {teacherClass.students.length - studentPreview.length === 1
+              ? "student is"
+              : "students are"}{" "}
+            available on the full Students page.
+          </p>
+        ) : null}
       </div>
 
       <div className="space-y-4">
@@ -905,9 +916,6 @@ export function TeacherClassDetailsPanel({
           <h3 className="text-lg font-semibold text-[var(--dashboard-text-strong)]">
             Assigned Quizzes
           </h3>
-          <p className="mt-1 text-sm leading-6 text-[var(--dashboard-text-soft)]">
-            Quiz assignments connected from the library will appear here for this class.
-          </p>
         </div>
 
         {teacherClass.assignedQuizzes.length ? (
@@ -949,42 +957,12 @@ export function TeacherClassDetailsPanel({
         ) : (
           <EmptyStateBlock
             title="No quizzes assigned yet"
-            description="Assign a quiz from the Quiz Library to connect this class with real learning activity."
             icon={BookOpen}
             className="border-dashed"
           />
         )}
       </div>
 
-      <div className="space-y-4">
-        <div>
-          <h3 className="text-lg font-semibold text-[var(--dashboard-text-strong)]">
-            Activity
-          </h3>
-          <p className="mt-1 text-sm leading-6 text-[var(--dashboard-text-soft)]">
-            Important class events live here so teachers can understand the current state at a glance.
-          </p>
-        </div>
-
-        <div className="space-y-3">
-          {activityItems.map((item) => (
-            <div
-              key={`${teacherClass.id}-${item.label}`}
-              className={cn(
-                dashboardInsetBlockClassName,
-                "flex items-start justify-between gap-4",
-              )}
-            >
-              <p className="font-medium text-[var(--dashboard-text-strong)]">
-                {item.label}
-              </p>
-              <p className="max-w-[240px] text-right text-sm leading-6 text-[var(--dashboard-text-soft)]">
-                {item.value}
-              </p>
-            </div>
-          ))}
-        </div>
-      </div>
     </DashboardSurface>
   );
 }

@@ -46,7 +46,7 @@ import type {
 type InputMethod = "upload" | "paste";
 type ParseStatus = "idle" | "processing" | "ready" | "warning" | "error";
 type GenerationState = "idle" | "running" | "success" | "failed" | "cancelled";
-type QuestionType = "Multiple choice" | "True/False" | "Short answer";
+type QuestionType = "Multiple choice" | "True/False";
 type QuestionStatus = "unreviewed" | "edited" | "needs attention";
 type WorkspaceStage = "input" | "configure" | "generate" | "review";
 
@@ -85,7 +85,6 @@ const quizSteps = [
 const questionTypeOptions: QuestionType[] = [
   "Multiple choice",
   "True/False",
-  "Short answer",
 ];
 
 const classOptions = [
@@ -247,7 +246,6 @@ export function QuizBuilderWorkspace({
   const [quizTitle, setQuizTitle] = useState("");
   const [questionCount, setQuestionCount] = useState(8);
   const [focus, setFocus] = useState("Protein structure");
-  const [language, setLanguage] = useState("English");
   const [contextValue, setContextValue] = useState(copy.defaultContextValue);
   const [questionTypes, setQuestionTypes] = useState<QuestionType[]>([
     "Multiple choice",
@@ -271,6 +269,7 @@ export function QuizBuilderWorkspace({
     useState<QuizLibraryVisibility>("private");
   const editingQuizId = location.state?.editQuizId as string | undefined;
   const editingQuiz = editingQuizId ? getQuizById(editingQuizId) : undefined;
+  const resolvedLanguage = editingQuiz?.language ?? "English";
 
   const canParse =
     (activeInput === "upload" && selectedFile !== null) ||
@@ -313,7 +312,6 @@ export function QuizBuilderWorkspace({
     setQuizTitle(editingQuiz.title);
     setQuestionCount(editingQuiz.questionCount);
     setFocus(editingQuiz.topic);
-    setLanguage(editingQuiz.language);
     setPublishVisibility(editingQuiz.visibility);
     setQuestions(
       editingQuiz.questions.map((question) => ({
@@ -706,14 +704,14 @@ export function QuizBuilderWorkspace({
       description: buildQuizDescription(parsedSource.extractedText, topic),
       topic,
       difficulty: getQuizDifficulty(normalizedQuestions.length),
-      language,
+      language: resolvedLanguage,
       status: targetStatus,
       visibility,
       tags: Array.from(
         new Set(
           [
             topic,
-            contextValue,
+            ...(mode === "student" ? [contextValue] : []),
             ...questionTypes,
           ].filter((value): value is string => value.trim().length > 0),
         ),
@@ -1117,23 +1115,25 @@ export function QuizBuilderWorkspace({
                       className={dashboardInputVariants({ size: "lg" })}
                     />
                   </label>
-                  <label className="space-y-2">
-                    <span className="text-sm font-semibold text-[var(--dashboard-text-strong)]">
-                      {copy.contextLabel}
-                    </span>
-                    <select
-                      value={contextValue}
-                      onChange={(event) => setContextValue(event.target.value)}
-                      className={cn(
-                        dashboardSelectVariants({ size: "md" }),
-                        "w-full",
-                      )}
-                    >
-                      {copy.contextOptions.map((item) => (
-                        <option key={item}>{item}</option>
-                      ))}
-                    </select>
-                  </label>
+                  {mode === "student" ? (
+                    <label className="space-y-2">
+                      <span className="text-sm font-semibold text-[var(--dashboard-text-strong)]">
+                        {copy.contextLabel}
+                      </span>
+                      <select
+                        value={contextValue}
+                        onChange={(event) => setContextValue(event.target.value)}
+                        className={cn(
+                          dashboardSelectVariants({ size: "md" }),
+                          "w-full",
+                        )}
+                      >
+                        {copy.contextOptions.map((item) => (
+                          <option key={item}>{item}</option>
+                        ))}
+                      </select>
+                    </label>
+                  ) : null}
                   <label className="space-y-2">
                     <span className="text-sm font-semibold text-[var(--dashboard-text-strong)]">
                       Number of questions
@@ -1165,23 +1165,6 @@ export function QuizBuilderWorkspace({
                       placeholder="Protein structure"
                       className={dashboardInputVariants({ size: "md" })}
                     />
-                  </label>
-                  <label className="space-y-2">
-                    <span className="text-sm font-semibold text-[var(--dashboard-text-strong)]">
-                      Language
-                    </span>
-                    <select
-                      value={language}
-                      onChange={(event) => setLanguage(event.target.value)}
-                      className={cn(
-                        dashboardSelectVariants({ size: "md" }),
-                        "w-full",
-                      )}
-                    >
-                      <option>English</option>
-                      <option>Kazakh</option>
-                      <option>Russian</option>
-                    </select>
                   </label>
                 </div>
 
@@ -1436,7 +1419,7 @@ export function QuizBuilderWorkspace({
                       </DashboardBadge>
                     </div>
 
-                    <div className="grid gap-4 md:grid-cols-4">
+                    <div className="grid gap-4 md:grid-cols-3">
                       <div className={dashboardInsetBlockClassName}>
                         <p className="text-sm text-[var(--dashboard-text-soft)]">
                           Questions generated
@@ -1459,14 +1442,6 @@ export function QuizBuilderWorkspace({
                         </p>
                         <p className="mt-2 font-semibold text-[var(--dashboard-text-strong)]">
                           {generationDurationLabel}
-                        </p>
-                      </div>
-                      <div className={dashboardInsetBlockClassName}>
-                        <p className="text-sm text-[var(--dashboard-text-soft)]">
-                          Language
-                        </p>
-                        <p className="mt-2 font-semibold text-[var(--dashboard-text-strong)]">
-                          {language}
                         </p>
                       </div>
                     </div>

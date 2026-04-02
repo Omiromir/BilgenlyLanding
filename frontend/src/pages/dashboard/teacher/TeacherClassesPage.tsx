@@ -14,10 +14,11 @@ import { useTeacherClasses } from "../../../app/providers/TeacherClassesProvider
 import { DashboardPageHeader } from "../../../features/dashboard/components/DashboardPageHeader";
 import {
   DashboardButton,
+  DashboardSurface,
+  dashboardMetaTextClassName,
   dashboardPageClassName,
 } from "../../../features/dashboard/components/DashboardPrimitives";
 import { SectionCard } from "../../../features/dashboard/components/SectionCard";
-import { StatCard } from "../../../features/dashboard/components/StatCard";
 import {
   AddStudentsDialog,
   TeacherClassCard,
@@ -31,7 +32,6 @@ import type {
   TeacherClassFormValues,
   TeacherClassRecord,
   TeacherClassStatus,
-  TeacherClassStudent,
 } from "../../../features/dashboard/components/classes/teacherClassesTypes";
 import { matchesTeacherClassSearch } from "../../../features/dashboard/components/classes/teacherClassesUtils";
 import { useDashboardPageMeta } from "../../../features/dashboard/hooks/useDashboardPageMeta";
@@ -44,8 +44,6 @@ export function TeacherClassesPage() {
     updateClass,
     setClassStatus,
     addStudentsToClass,
-    removeStudentFromClass,
-    resendStudentInvite,
     removeQuizFromClass,
     deleteClass,
   } = useTeacherClasses();
@@ -131,26 +129,6 @@ export function TeacherClassesPage() {
     );
   };
 
-  const handleRemoveStudent = (student: TeacherClassStudent) => {
-    if (!selectedClass) {
-      return;
-    }
-
-    removeStudentFromClass(selectedClass.id, student.id);
-    setMembershipFeedback(`${student.fullName} was removed from ${selectedClass.name}.`);
-  };
-
-  const handleResendInvite = (student: TeacherClassStudent) => {
-    if (!selectedClass) {
-      return;
-    }
-
-    resendStudentInvite(selectedClass.id, student.id);
-    setMembershipFeedback(
-      `Invite resent to ${student.email}. The student notification was refreshed.`,
-    );
-  };
-
   const handleRemoveAssignedQuiz = (quiz: { quizId: string; title: string }) => {
     if (!selectedClass) {
       return;
@@ -176,12 +154,29 @@ export function TeacherClassesPage() {
     (total, teacherClass) => total + teacherClass.studentCount,
     0,
   );
+  const overviewItems = [
+    {
+      label: "Total classes",
+      value: classes.length,
+    },
+    {
+      label: "Active classes",
+      value: activeClassesCount,
+    },
+    {
+      label: "Archived classes",
+      value: archivedClassesCount,
+      helper: totalStudentsCount
+        ? `${totalStudentsCount} student memberships`
+        : "",
+    },
+  ];
 
   return (
     <div className={dashboardPageClassName}>
       <DashboardPageHeader
         title={meta?.title ?? "Classes"}
-        subtitle="Create, organize, and manage your real class workspaces with room for students, quizzes, and classroom activity."
+        subtitle=""
         actions={
           <DashboardButton
             type="button"
@@ -194,34 +189,31 @@ export function TeacherClassesPage() {
         }
       />
 
-      <div className="grid gap-5 md:grid-cols-3">
-        <StatCard
-          title="Total Classes"
-          value={String(classes.length)}
-          change={classes.length ? "Live classroom spaces you manage" : ""}
-          icon={Users}
-          iconClassName="bg-[var(--dashboard-brand-soft-alt)] text-[var(--dashboard-brand)]"
-        />
-        <StatCard
-          title="Active Classes"
-          value={String(activeClassesCount)}
-          change={activeClassesCount ? "Ready for current learning activity" : ""}
-          icon={BookOpen}
-          iconClassName="bg-[var(--dashboard-brand-soft)] text-[var(--dashboard-brand-strong)]"
-        />
-        <StatCard
-          title="Archived Classes"
-          value={String(archivedClassesCount)}
-          change={totalStudentsCount ? `${totalStudentsCount} students across all classes` : ""}
-          icon={Archive}
-          iconClassName="bg-[var(--dashboard-brand-soft-alt)] text-[var(--dashboard-brand)]"
-        />
+      <div className="grid gap-4 md:grid-cols-3">
+        {overviewItems.map((item) => (
+          <DashboardSurface
+            key={item.label}
+            variant="muted"
+            radius="lg"
+            padding="sm"
+            className="space-y-2"
+          >
+            <p className={dashboardMetaTextClassName}>{item.label}</p>
+            <p className="text-[2rem] font-semibold tracking-[-0.04em] text-[var(--dashboard-text-strong)]">
+              {item.value}
+            </p>
+            {item.helper ? (
+              <p className="text-sm leading-6 text-[var(--dashboard-text-soft)]">
+                {item.helper}
+              </p>
+            ) : null}
+          </DashboardSurface>
+        ))}
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.45fr)_minmax(320px,0.95fr)]">
+      <div className="grid gap-6 xl:grid-cols-[minmax(320px,0.95fr)_minmax(0,1.25fr)]">
         <SectionCard
-          title="Your Classes"
-          description="Manage class setup, quickly find existing groups, and keep one reliable source of truth for classroom organization."
+          title="Class List"
           actions={null}
           contentClassName="space-y-5"
         >
@@ -245,7 +237,7 @@ export function TeacherClassesPage() {
               }}
             />
           ) : (
-            <div className="grid gap-5 md:grid-cols-2">
+            <div className="space-y-3">
               {filteredClasses.map((teacherClass) => (
                 <TeacherClassCard
                   key={teacherClass.id}
@@ -266,8 +258,6 @@ export function TeacherClassesPage() {
           hasClasses={classes.length > 0}
           membershipFeedback={membershipFeedback}
           onOpenAddStudents={() => setIsAddStudentsDialogOpen(true)}
-          onRemoveStudent={handleRemoveStudent}
-          onResendInvite={handleResendInvite}
           onRemoveAssignedQuiz={handleRemoveAssignedQuiz}
         />
       </div>

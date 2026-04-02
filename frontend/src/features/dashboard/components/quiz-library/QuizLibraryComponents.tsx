@@ -164,11 +164,7 @@ export function QuizFilterBar({
           </div>
         </div>
 
-        {helperText ? (
-          <p className="text-sm leading-6 text-[var(--dashboard-text-soft)]">
-            {helperText}
-          </p>
-        ) : null}
+       
       </section>
     </DashboardSurface>
   );

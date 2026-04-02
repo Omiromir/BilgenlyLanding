@@ -17,6 +17,7 @@ import { TeacherOverviewPage } from "../../pages/dashboard/teacher/TeacherOvervi
 import { TeacherProfilePage } from "../../pages/dashboard/teacher/TeacherProfilePage";
 import { TeacherQuizLibraryPage } from "../../pages/dashboard/teacher/TeacherQuizLibraryPage";
 import { TeacherSettingsPage } from "../../pages/dashboard/teacher/TeacherSettingsPage";
+import { TeacherStudentsPage } from "../../pages/dashboard/teacher/TeacherStudentsPage";
 import { OnboardingPage } from "../../pages/auth/OnboardingPage";
 import { ResetPasswordPage } from "../../pages/auth/ResetPasswordPage";
 import { SignInPage } from "../../pages/auth/SignInPage";
@@ -50,6 +51,7 @@ export function AppRoutes() {
                 element={<TeacherQuizLibraryPage />}
               />
               <Route path="classes" element={<TeacherClassesPage />} />
+              <Route path="students" element={<TeacherStudentsPage />} />
               <Route path="analytics" element={<TeacherAnalyticsPage />} />
               <Route path="settings" element={<TeacherSettingsPage />} />
             </Route>

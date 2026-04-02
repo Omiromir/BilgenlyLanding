@@ -410,11 +410,6 @@ export function TeacherQuizLibraryPage() {
         filters={visibleFilterOptions}
         hasActiveFilters={hasActiveFilters}
         onClearFilters={resetFilters}
-        helperText={
-          shouldShowStatusFilter
-            ? "Use search to find quizzes fast, then filter by type only when you need to separate saved, private, or public items."
-            : undefined
-        }
       />
 
       <section className="space-y-5">
