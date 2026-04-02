@@ -5,7 +5,7 @@ import {
   Palette,
   Shield,
   User,
-} from "lucide-react";
+} from "../../../components/icons/AppIcons";
 import type { ReactNode } from "react";
 import { useState } from "react";
 import { Input } from "../../../components/ui/input";

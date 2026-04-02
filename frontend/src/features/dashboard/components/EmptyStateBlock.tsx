@@ -1,5 +1,5 @@
-import type { LucideIcon } from "lucide-react";
-import { Sparkles } from "lucide-react";
+import type { LucideIcon } from "../../../components/icons/AppIcons";
+import { Sparkles } from "../../../components/icons/AppIcons";
 import type { ReactNode } from "react";
 import { cn } from "../../../components/ui/utils";
 import {

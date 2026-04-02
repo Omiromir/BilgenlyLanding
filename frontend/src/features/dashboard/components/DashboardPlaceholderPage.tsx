@@ -1,4 +1,4 @@
-import { ArrowRight, Sparkles } from "lucide-react";
+import { ArrowRight, Sparkles } from "../../../components/icons/AppIcons";
 import { Link } from "react-router";
 import { DashboardPageHeader } from "./DashboardPageHeader";
 import {
