@@ -1,4 +1,4 @@
-import { BookOpen, Hash, Timer } from "lucide-react";
+import { BookOpen, Hash, Timer } from "../../../components/icons/AppIcons";
 import { useAuth } from "../../../app/providers/AuthProvider";
 import { useTeacherClasses } from "../../../app/providers/TeacherClassesProvider";
 import { useQuizLibrary } from "../../../app/providers/QuizLibraryProvider";

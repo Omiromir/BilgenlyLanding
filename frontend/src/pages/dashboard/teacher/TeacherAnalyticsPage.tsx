@@ -4,7 +4,7 @@ import {
   CircleDot,
   TrendingUp,
   Users,
-} from "lucide-react";
+} from "../../../components/icons/AppIcons";
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, BarChart, Bar, PieChart, Pie, Cell } from "recharts";
 import { DashboardPageHeader } from "../../../features/dashboard/components/DashboardPageHeader";
 import {

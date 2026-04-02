@@ -1,10 +1,10 @@
-import type { LucideIcon } from "lucide-react";
+import type { LucideIcon } from "../../../components/icons/AppIcons";
 import {
   BarChart3,
   ClipboardList,
   FileText,
   Users,
-} from "lucide-react";
+} from "../../../components/icons/AppIcons";
 
 export interface OverviewStat {
   title: string;

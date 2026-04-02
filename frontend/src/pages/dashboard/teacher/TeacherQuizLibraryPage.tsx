@@ -11,7 +11,7 @@ import {
   Send,
   Trash2,
   Users,
-} from "lucide-react";
+} from "../../../components/icons/AppIcons";
 import { Link, useLocation, useNavigate } from "react-router";
 import {
   Dialog,

@@ -1,4 +1,4 @@
-import type { LucideIcon } from "lucide-react";
+import type { LucideIcon } from "../../../components/icons/AppIcons";
 import {
   BarChart3,
   Bell,
@@ -12,7 +12,7 @@ import {
   Settings,
   ShieldCheck,
   Users,
-} from "lucide-react";
+} from "../../../components/icons/AppIcons";
 import type { UserRole } from "../../../lib/auth";
 
 export interface DashboardRouteMeta {

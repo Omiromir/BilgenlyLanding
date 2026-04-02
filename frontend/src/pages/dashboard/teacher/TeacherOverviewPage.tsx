@@ -1,4 +1,4 @@
-import { BookOpen, Clock3 } from "lucide-react";
+import { BookOpen, Clock3 } from "../../../components/icons/AppIcons";
 import { Link } from "react-router";
 import logoPng from "../../../assets/logo.png";
 import { cn } from "../../../components/ui/utils";

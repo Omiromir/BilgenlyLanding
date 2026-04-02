@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Bell, Inbox, Users } from "lucide-react";
+import { Bell, Inbox, Users } from "../../../components/icons/AppIcons";
 import { useAuth } from "../../../app/providers/AuthProvider";
 import { useNotifications } from "../../../app/providers/NotificationsProvider";
 import { useTeacherClasses } from "../../../app/providers/TeacherClassesProvider";

@@ -8,7 +8,7 @@ import {
   RotateCcw,
   SearchX,
   UserRound,
-} from "lucide-react";
+} from "../../../../components/icons/AppIcons";
 import { cn } from "../../../../components/ui/utils";
 import {
   Dialog,

@@ -1,5 +1,5 @@
 import { Slot } from "@radix-ui/react-slot";
-import { Search } from "lucide-react";
+import { Search } from "../../../components/icons/AppIcons";
 import type { ComponentProps } from "react";
 import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "../../../components/ui/utils";

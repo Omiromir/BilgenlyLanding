@@ -1,4 +1,4 @@
-import type { LucideIcon } from "lucide-react";
+import type { LucideIcon } from "../../../components/icons/AppIcons";
 import { cn } from "../../../components/ui/utils";
 import {
   DashboardSurface,

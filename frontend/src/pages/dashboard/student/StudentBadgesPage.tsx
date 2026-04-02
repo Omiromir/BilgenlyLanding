@@ -1,4 +1,4 @@
-import { Medal, Trophy } from "lucide-react";
+import { Medal, Trophy } from "../../../components/icons/AppIcons";
 import { CtaPanel } from "../../../features/dashboard/components/CtaPanel";
 import { DashboardPageHeader } from "../../../features/dashboard/components/DashboardPageHeader";
 import {

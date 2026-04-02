@@ -8,7 +8,7 @@ import {
   MapPin,
   Medal,
   TrendingUp,
-} from "lucide-react";
+} from "../../../components/icons/AppIcons";
 import { DashboardPageHeader } from "./DashboardPageHeader";
 import { cn } from "../../../components/ui/utils";
 import type {

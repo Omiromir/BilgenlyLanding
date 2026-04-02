@@ -20,7 +20,7 @@ import {
   Upload,
   Wand2,
   XCircle,
-} from "lucide-react";
+} from "../../components/icons/AppIcons";
 import { AnimatePresence, motion } from "motion/react";
 import { useLocation, useNavigate } from "react-router";
 import { useQuizLibrary } from "../../app/providers/QuizLibraryProvider";

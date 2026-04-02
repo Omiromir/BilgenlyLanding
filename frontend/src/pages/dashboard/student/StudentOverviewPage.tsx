@@ -1,4 +1,4 @@
-import { BookOpen, Medal, Timer } from "lucide-react";
+import { BookOpen, Medal, Timer } from "../../../components/icons/AppIcons";
 import { Link } from "react-router";
 import { useAuth } from "../../../app/providers/AuthProvider";
 import { useTeacherClasses } from "../../../app/providers/TeacherClassesProvider";

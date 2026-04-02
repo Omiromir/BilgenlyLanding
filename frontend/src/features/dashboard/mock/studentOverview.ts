@@ -1,5 +1,5 @@
-import type { LucideIcon } from "lucide-react";
-import { BookOpen, Flame, Medal, Sparkles, TrendingUp } from "lucide-react";
+import type { LucideIcon } from "../../../components/icons/AppIcons";
+import { BookOpen, Flame, Medal, Sparkles, TrendingUp } from "../../../components/icons/AppIcons";
 import type { OverviewStat } from "./teacherOverview";
 
 export interface StudentAssignment {

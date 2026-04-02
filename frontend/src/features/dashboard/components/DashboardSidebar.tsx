@@ -1,4 +1,4 @@
-import { PanelLeftClose, PanelLeftOpen, X } from "lucide-react";
+import { PanelLeftClose, PanelLeftOpen, X } from "../../../components/icons/AppIcons";
 import { NavLink } from "react-router";
 import { useAuth } from "../../../app/providers/AuthProvider";
 import { cn } from "../../../components/ui/utils";
