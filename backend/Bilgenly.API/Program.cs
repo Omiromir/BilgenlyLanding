@@ -73,6 +73,7 @@ builder.Services.AddCors(options =>
             .AllowAnyMethod();
     });
 });
+//F
 var app = builder.Build();
 if (app.Environment.IsDevelopment())
 {   
