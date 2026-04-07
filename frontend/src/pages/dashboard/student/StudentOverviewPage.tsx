@@ -1,8 +1,10 @@
 import { BookOpen, Medal, Timer } from "../../../components/icons/AppIcons";
 import { Link } from "react-router";
+import { useMemo } from "react";
 import { useAuth } from "../../../app/providers/AuthProvider";
 import { useTeacherClasses } from "../../../app/providers/TeacherClassesProvider";
 import { useQuizLibrary } from "../../../app/providers/QuizLibraryProvider";
+import { useQuizSessions } from "../../../app/providers/QuizSessionProvider";
 import logoPng from "../../../assets/logo.png";
 import { cn } from "../../../components/ui/utils";
 import { CtaPanel } from "../../../features/dashboard/components/CtaPanel";
@@ -19,12 +21,12 @@ import {
 } from "../../../features/dashboard/components/DashboardPrimitives";
 import { EmptyAssignedQuizzesState } from "../../../features/dashboard/components/quiz-library/QuizLibraryComponents";
 import { buildStudentQuizLibrarySources } from "../../../features/dashboard/components/quiz-library/studentQuizLibrarySources";
+import { useQuizLauncher } from "../../../features/quiz-session/useQuizLauncher";
 import { SectionCard } from "../../../features/dashboard/components/SectionCard";
 import { StatCard } from "../../../features/dashboard/components/StatCard";
 import {
-  studentOverviewStats,
-  studentResults,
-} from "../../../features/dashboard/mock/studentOverview";
+  buildStudentOverviewData,
+} from "../../../features/dashboard/components/student-overview/studentOverviewData";
 
 const scoreToneClassName = {
   blue: dashboardTextToneClassName.brand,
@@ -35,17 +37,83 @@ export function StudentOverviewPage() {
   const { currentUser } = useAuth();
   const { classes } = useTeacherClasses();
   const { quizzes } = useQuizLibrary();
+  const { getCompletedSessionsForRole, sessions } = useQuizSessions();
+  const { openQuiz } = useQuizLauncher();
   const studentViewer = currentUser?.role === "student" ? currentUser : null;
-  const studentIdentity = {
-    userId: studentViewer?.id,
-    email: studentViewer?.email,
-  };
-  const studentSources = buildStudentQuizLibrarySources(
-    classes,
-    quizzes,
-    studentIdentity,
+  const studentIdentity = useMemo(
+    () => ({
+      userId: studentViewer?.id,
+      email: studentViewer?.email,
+    }),
+    [studentViewer?.email, studentViewer?.id],
   );
-  const assignedPreview = studentSources.assigned.slice(0, 3);
+  const studentSources = useMemo(
+    () => buildStudentQuizLibrarySources(classes, quizzes, studentIdentity, sessions),
+    [classes, quizzes, sessions, studentIdentity],
+  );
+  const completedSessions = useMemo(
+    () => getCompletedSessionsForRole("student"),
+    [getCompletedSessionsForRole],
+  );
+  const overview = useMemo(
+    () =>
+      buildStudentOverviewData({
+        studentSources,
+        completedSessions,
+      }),
+    [completedSessions, studentSources],
+  );
+  const assignedPreview = useMemo(
+    () =>
+      [...studentSources.assigned]
+        .sort(
+          (left, right) =>
+            new Date(right.assignmentContext.assignedAt).getTime() -
+            new Date(left.assignmentContext.assignedAt).getTime(),
+        )
+        .slice(0, 3),
+    [studentSources.assigned],
+  );
+
+  const getAssignedStatusLabel = (status: string) => {
+    if (status === "completed") {
+      return "Completed";
+    }
+
+    if (status === "in_progress") {
+      return "In Progress";
+    }
+
+    if (status === "expired") {
+      return "Expired";
+    }
+
+    if (status === "attempts_exhausted") {
+      return "No attempts left";
+    }
+
+    return "Available";
+  };
+
+  const getAssignedStatusClassName = (status: string) => {
+    if (status === "completed") {
+      return "text-[var(--dashboard-success)]";
+    }
+
+    if (status === "in_progress") {
+      return "text-[var(--dashboard-brand)]";
+    }
+
+    if (status === "expired") {
+      return "text-[var(--dashboard-danger)]";
+    }
+
+    if (status === "attempts_exhausted") {
+      return "text-[var(--dashboard-text-soft)]";
+    }
+
+    return "text-[var(--dashboard-warning)]";
+  };
 
   const getAssignedEmptyState = () => {
     if (studentSources.pendingMemberships.length) {
@@ -115,7 +183,7 @@ export function StudentOverviewPage() {
       />
 
       <div className={dashboardStatsGridClassName}>
-        {studentOverviewStats.map((stat) => (
+        {overview.stats.map((stat) => (
           <StatCard key={stat.title} {...stat} />
         ))}
       </div>
@@ -152,22 +220,49 @@ export function StudentOverviewPage() {
                           </span>
                         </div>
                       </div>
-                      <span className="text-sm font-medium text-[var(--dashboard-warning)]">
-                        Assigned
+                      <span
+                        className={cn(
+                          "text-sm font-medium",
+                          getAssignedStatusClassName(assignment.assignmentState.status),
+                        )}
+                      >
+                        {getAssignedStatusLabel(assignment.assignmentState.status)}
                       </span>
                     </div>
 
-                    <DashboardButton asChild type="button" size="lg" className="mt-5 w-full">
-                      <Link
-                        to="/dashboard/student/classes"
-                        state={{ selectedClassId: assignment.assignmentContext.classId }}
-                      >
-                        {assignment.practiceState === "in-progress"
+                    <DashboardButton
+                      type="button"
+                      size="lg"
+                      className="mt-5 w-full"
+                      onClick={() =>
+                        openQuiz({
+                          quizId: assignment.id,
+                          viewerRole: "student",
+                          assignmentId: assignment.assignmentContext.assignmentId,
+                          preferredSession:
+                            assignment.assignmentState.status === "completed"
+                              ? "completed"
+                              : assignment.assignmentState.status === "in_progress"
+                                ? "in-progress"
+                                : undefined,
+                          navigationState: {
+                            launchSourceType: "overview",
+                            launchSourceLabel: "Student overview",
+                            returnToPath: "/dashboard/student/overview",
+                            returnToLabel: "Back to overview",
+                          },
+                        })
+                      }
+                    >
+                        {assignment.assignmentState.status === "in_progress"
                           ? "Continue Quiz"
-                          : assignment.practiceState === "completed"
-                            ? "View Quiz"
-                            : "Start Quiz"}
-                      </Link>
+                          : assignment.assignmentState.status === "completed"
+                            ? "View Results"
+                            : assignment.assignmentState.status === "expired" ||
+                                assignment.assignmentState.status ===
+                                  "attempts_exhausted"
+                              ? "Open Assignment"
+                              : "Start Quiz"}
                     </DashboardButton>
                   </article>
                 </DashboardSurface>
@@ -183,37 +278,48 @@ export function StudentOverviewPage() {
 
         <SectionCard title="Recent Results">
           <div className={dashboardSectionStackClassName}>
-            {studentResults.map((result, index) => (
-              <article
-                key={result.title}
-                className="flex items-start justify-between gap-4 rounded-[18px] px-3 py-4"
-              >
-                <div className="flex items-start gap-4">
-                  <div className="mt-1 text-[var(--dashboard-warning)]">
-                    {index < 2 ? (
-                      <Medal className="h-5 w-5" />
-                    ) : (
-                      <span className="inline-block h-5 w-5" />
-                    )}
-                  </div>
-                  <div>
-                    <h3 className="text-[1.12rem] font-semibold text-[var(--dashboard-text-strong)]">
-                      {result.title}
-                    </h3>
-                    <p className="mt-1 text-sm text-slate-500">{result.date}</p>
-                  </div>
-                </div>
-
-                <span
-                  className={cn(
-                    "text-[1.8rem] font-semibold tracking-[-0.03em]",
-                    scoreToneClassName[result.scoreTone],
-                  )}
+            {overview.recentResults.length ? (
+              overview.recentResults.map((result, index) => (
+                <article
+                  key={`${result.title}-${result.date}`}
+                  className="flex items-start justify-between gap-4 rounded-[18px] px-3 py-4"
                 >
-                  {result.score}
-                </span>
-              </article>
-            ))}
+                  <div className="flex items-start gap-4">
+                    <div className="mt-1 text-[var(--dashboard-warning)]">
+                      {index < 2 ? (
+                        <Medal className="h-5 w-5" />
+                      ) : (
+                        <span className="inline-block h-5 w-5" />
+                      )}
+                    </div>
+                    <div>
+                      <h3 className="text-[1.12rem] font-semibold text-[var(--dashboard-text-strong)]">
+                        {result.title}
+                      </h3>
+                      <p className="mt-1 text-sm text-slate-500">{result.date}</p>
+                    </div>
+                  </div>
+
+                  <span
+                    className={cn(
+                      "text-[1.8rem] font-semibold tracking-[-0.03em]",
+                      scoreToneClassName[result.scoreTone],
+                    )}
+                  >
+                    {result.score}
+                  </span>
+                </article>
+              ))
+            ) : (
+              <div className="rounded-[18px] border border-dashed border-[var(--dashboard-border-soft)] bg-[var(--dashboard-surface-muted)] px-5 py-6">
+                <p className="font-semibold text-[var(--dashboard-text-strong)]">
+                  No recent results yet
+                </p>
+                <p className="mt-2 text-sm leading-6 text-[var(--dashboard-text-soft)]">
+                  Finish your first quiz and your latest scores will appear here automatically.
+                </p>
+              </div>
+            )}
           </div>
         </SectionCard>
       </div>

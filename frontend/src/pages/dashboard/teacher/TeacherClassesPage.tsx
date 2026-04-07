@@ -1,4 +1,4 @@
-import { useDeferredValue, useEffect, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import { Archive, BookOpen, Trash2, Users } from "../../../components/icons/AppIcons";
 import {
   AlertDialog,
@@ -15,6 +15,7 @@ import {
   getQuizLibraryItemsForRole,
   useQuizLibrary,
 } from "../../../app/providers/QuizLibraryProvider";
+import { useQuizSessions } from "../../../app/providers/QuizSessionProvider";
 import { DashboardPageHeader } from "../../../features/dashboard/components/DashboardPageHeader";
 import {
   DashboardButton,
@@ -40,6 +41,7 @@ import type {
 } from "../../../features/dashboard/components/classes/teacherClassesTypes";
 import { isDraftQuiz } from "../../../features/dashboard/components/quiz-library/quizLibraryUtils";
 import { matchesTeacherClassSearch } from "../../../features/dashboard/components/classes/teacherClassesUtils";
+import { buildTeacherAssignedQuizAnalytics } from "../../../features/dashboard/components/teacher-analytics/teacherQuizAnalyticsUtils";
 import { useDashboardPageMeta } from "../../../features/dashboard/hooks/useDashboardPageMeta";
 
 export function TeacherClassesPage() {
@@ -55,6 +57,7 @@ export function TeacherClassesPage() {
     deleteClass,
   } = useTeacherClasses();
   const { quizzes } = useQuizLibrary();
+  const { sharedAssignedSessions } = useQuizSessions();
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isAddStudentsDialogOpen, setIsAddStudentsDialogOpen] = useState(false);
   const [isAssignQuizDialogOpen, setIsAssignQuizDialogOpen] = useState(false);
@@ -184,8 +187,39 @@ export function TeacherClassesPage() {
         : "",
     },
   ];
+  const assignmentInsights = useMemo(() => {
+    if (!selectedClass) {
+      return {};
+    }
 
-  const handleAssignQuiz = (quiz: (typeof assignableQuizzes)[number]) => {
+    return Object.fromEntries(
+      selectedClass.assignedQuizzes.map((assignment) => {
+        const analytics = buildTeacherAssignedQuizAnalytics(
+          selectedClass,
+          assignment,
+          sharedAssignedSessions,
+        );
+
+        return [
+          assignment.assignmentId,
+          {
+            attemptedStudentsCount: analytics.studentsWithAttemptsCount,
+            exhaustedStudentsCount: analytics.exhaustedAttemptsStudentsCount,
+            missedDeadlineCount: analytics.missedDeadlineStudentsCount,
+          },
+        ];
+      }),
+    );
+  }, [selectedClass, sharedAssignedSessions]);
+
+  const handleAssignQuiz = (
+    quiz: (typeof assignableQuizzes)[number],
+    settings: {
+      deadline: string | null;
+      maxAttempts: number | null;
+      allowLateSubmissions: boolean;
+    },
+  ) => {
     if (!selectedClass || selectedClass.status !== "active") {
       return;
     }
@@ -198,6 +232,7 @@ export function TeacherClassesPage() {
         questionCount: quiz.questionCount,
       },
       [selectedClass.id],
+      settings,
     );
 
     if (!assignedClassIds.length) {
@@ -294,6 +329,7 @@ export function TeacherClassesPage() {
           teacherClass={selectedClass}
           hasClasses={classes.length > 0}
           membershipFeedback={membershipFeedback}
+          assignmentInsights={assignmentInsights}
           onOpenAddStudents={
             isSelectedClassActive ? () => setIsAddStudentsDialogOpen(true) : undefined
           }

@@ -26,6 +26,7 @@ import {
   getNotificationStatusLabel,
   getNotificationStatusTone,
 } from "./notifications/notificationUtils";
+import type { DashboardNotification } from "./notifications/notificationTypes";
 
 interface DashboardHeaderProps {
   onOpenSidebar: () => void;
@@ -232,11 +233,11 @@ export function DashboardHeader({ onOpenSidebar }: DashboardHeaderProps) {
                       <div className="flex items-start gap-3">
                         <div
                           className={dashboardIconChipVariants({
-                            tone: getNotificationStatusTone(notification.status),
+                            tone: getNotificationStatusTone(notification),
                             size: "md",
                           })}
                         >
-                          <NotificationIcon status={notification.status} />
+                          <NotificationIcon notification={notification} />
                         </div>
 
                         <div className="min-w-0 flex-1">
@@ -250,11 +251,9 @@ export function DashboardHeader({ onOpenSidebar }: DashboardHeaderProps) {
                                   <span className="h-2 w-2 rounded-full bg-[var(--dashboard-brand)]" />
                                 ) : null}
                                 <DashboardBadge
-                                  tone={getNotificationStatusTone(
-                                    notification.status,
-                                  )}
+                                  tone={getNotificationStatusTone(notification)}
                                 >
-                                  {getNotificationStatusLabel(notification.status)}
+                                  {getNotificationStatusLabel(notification)}
                                 </DashboardBadge>
                               </div>
                               <p className="mt-1 text-[15px] leading-6 text-[var(--dashboard-text-soft)]">
@@ -365,11 +364,15 @@ export function DashboardHeader({ onOpenSidebar }: DashboardHeaderProps) {
 }
 
 function NotificationIcon({
-  status,
+  notification,
 }: {
-  status: "pending" | "accepted" | "declined" | "removed";
+  notification: DashboardNotification;
 }) {
-  switch (status) {
+  if (notification.type === "quiz_follow_up") {
+    return <Bell className="h-4 w-4" />;
+  }
+
+  switch (notification.status) {
     case "accepted":
       return <CircleCheckBig className="h-4 w-4" />;
     case "declined":

@@ -14,6 +14,7 @@ import type {
   TeacherClassStatus,
   TeacherClassStudent,
 } from "../../features/dashboard/components/classes/teacherClassesTypes";
+import { getAssignmentLevelStatus } from "../../features/assignments/assignmentConstraints";
 import {
   buildTeacherStudentNameFromEmail,
   createTeacherClassAssignmentId,
@@ -33,11 +34,6 @@ import {
   mockTeacherUser,
 } from "../../features/dashboard/mock/mockUsers";
 import { useAuth } from "./AuthProvider";
-import {
-  getScopedStorageValue,
-  getUserStorageScope,
-  getUserScopedStorageKey,
-} from "./userScopedStorage";
 
 const TEACHER_CLASSES_STORAGE_KEY = "bilgenly_teacher_classes";
 
@@ -69,7 +65,15 @@ interface TeacherClassesContextValue {
   assignQuizToClasses: (
     quiz: Pick<TeacherClassAssignedQuiz, "quizId" | "title" | "topic" | "questionCount">,
     classIds: string[],
+    settings?: Pick<
+      TeacherClassAssignedQuiz,
+      "deadline" | "maxAttempts" | "allowLateSubmissions"
+    >,
   ) => string[];
+  syncAssignedQuizDetails: (
+    quizId: string,
+    values: Pick<TeacherClassAssignedQuiz, "title" | "topic" | "questionCount">,
+  ) => void;
   removeQuizFromClass: (classId: string, quizId: string) => void;
   deleteClass: (classId: string) => void;
   getClassById: (classId: string) => TeacherClassRecord | undefined;
@@ -210,37 +214,59 @@ function sanitizeTeacherClassRecord(
           (quiz) =>
             typeof quiz?.quizId === "string" && typeof quiz?.title === "string",
         )
-        .map((quiz) => ({
-          id:
-            typeof quiz.id === "string" && quiz.id
-              ? quiz.id
-              : createTeacherClassAssignmentId(),
-          classId:
-            typeof quiz.classId === "string" && quiz.classId
-              ? quiz.classId
-              : resolvedClassId,
-          quizId: quiz.quizId,
-          title: quiz.title,
-          topic: typeof quiz.topic === "string" ? quiz.topic : "",
-          questionCount:
-            typeof quiz.questionCount === "number" && Number.isFinite(quiz.questionCount)
-              ? quiz.questionCount
-              : 0,
-          assignedAt:
-            typeof quiz.assignedAt === "string"
-              ? quiz.assignedAt
-              : new Date().toISOString(),
-          assignedBy:
-            typeof quiz.assignedBy === "string" && quiz.assignedBy
-              ? quiz.assignedBy
-              : mockTeacherUser.id,
-          assignedByName:
-            typeof quiz.assignedByName === "string" && quiz.assignedByName
-              ? quiz.assignedByName
-              : mockTeacherUser.fullName,
-          visibility: "class-members" as const,
-          status: "assigned" as const,
-        }))
+        .map((quiz) => {
+          const assignmentId =
+            typeof quiz.assignmentId === "string" && quiz.assignmentId
+              ? quiz.assignmentId
+              : typeof quiz.id === "string" && quiz.id
+                ? quiz.id
+                : createTeacherClassAssignmentId();
+          const deadline =
+            typeof quiz.deadline === "string" && quiz.deadline ? quiz.deadline : null;
+          const allowLateSubmissions = Boolean(quiz.allowLateSubmissions);
+
+          return {
+            id: assignmentId,
+            assignmentId,
+            classId:
+              typeof quiz.classId === "string" && quiz.classId
+                ? quiz.classId
+                : resolvedClassId,
+            quizId: quiz.quizId,
+            title: quiz.title,
+            topic: typeof quiz.topic === "string" ? quiz.topic : "",
+            questionCount:
+              typeof quiz.questionCount === "number" &&
+              Number.isFinite(quiz.questionCount)
+                ? quiz.questionCount
+                : 0,
+            assignedAt:
+              typeof quiz.assignedAt === "string"
+                ? quiz.assignedAt
+                : new Date().toISOString(),
+            deadline,
+            maxAttempts:
+              typeof quiz.maxAttempts === "number" && quiz.maxAttempts > 0
+                ? Math.round(quiz.maxAttempts)
+                : quiz.maxAttempts === null
+                  ? null
+                  : 1,
+            allowLateSubmissions,
+            assignedBy:
+              typeof quiz.assignedBy === "string" && quiz.assignedBy
+                ? quiz.assignedBy
+                : mockTeacherUser.id,
+            assignedByName:
+              typeof quiz.assignedByName === "string" && quiz.assignedByName
+                ? quiz.assignedByName
+                : mockTeacherUser.fullName,
+            visibility: "class-members" as const,
+            status: getAssignmentLevelStatus({
+              deadline,
+              allowLateSubmissions,
+            }),
+          };
+        })
     : [];
   const createdAt =
     typeof teacherClass.createdAt === "string"
@@ -289,13 +315,99 @@ function updateTeacherClassStudents(
   };
 }
 
+function loadTeacherClassesFromStorage() {
+  const mergedByClassId = new Map<string, Partial<TeacherClassRecord>>();
+  const legacyScopedKeys: string[] = [];
+  const mergeTeacherClasses = (records: Partial<TeacherClassRecord>[]) => {
+    records.forEach((teacherClass) => {
+      if (typeof teacherClass?.id !== "string" || !teacherClass.id) {
+        return;
+      }
+
+      const existingClass = mergedByClassId.get(teacherClass.id);
+
+      if (!existingClass) {
+        mergedByClassId.set(teacherClass.id, teacherClass);
+        return;
+      }
+
+      const existingUpdatedAt =
+        typeof existingClass.updatedAt === "string"
+          ? new Date(existingClass.updatedAt).getTime()
+          : 0;
+      const candidateUpdatedAt =
+        typeof teacherClass.updatedAt === "string"
+          ? new Date(teacherClass.updatedAt).getTime()
+          : 0;
+
+      if (candidateUpdatedAt >= existingUpdatedAt) {
+        mergedByClassId.set(teacherClass.id, teacherClass);
+      }
+    });
+  };
+
+  const sharedValue = localStorage.getItem(TEACHER_CLASSES_STORAGE_KEY);
+
+  if (sharedValue) {
+    try {
+      const parsed = JSON.parse(sharedValue) as Partial<TeacherClassRecord>[];
+
+      if (Array.isArray(parsed)) {
+        mergeTeacherClasses(parsed);
+      }
+    } catch {
+      localStorage.removeItem(TEACHER_CLASSES_STORAGE_KEY);
+    }
+  }
+
+  for (let index = 0; index < localStorage.length; index += 1) {
+    const storageKey = localStorage.key(index);
+
+    if (
+      !storageKey ||
+      !storageKey.startsWith(`${TEACHER_CLASSES_STORAGE_KEY}:`)
+    ) {
+      continue;
+    }
+
+    legacyScopedKeys.push(storageKey);
+
+    const scopedValue = localStorage.getItem(storageKey);
+
+    if (!scopedValue) {
+      continue;
+    }
+
+    try {
+      const parsed = JSON.parse(scopedValue) as Partial<TeacherClassRecord>[];
+
+      if (!Array.isArray(parsed)) {
+        continue;
+      }
+
+      mergeTeacherClasses(parsed);
+    } catch {
+      continue;
+    }
+  }
+
+  if (!mergedByClassId.size) {
+    return null;
+  }
+
+  const mergedValue = JSON.stringify(Array.from(mergedByClassId.values()));
+  localStorage.setItem(TEACHER_CLASSES_STORAGE_KEY, mergedValue);
+  legacyScopedKeys.forEach((storageKey) => localStorage.removeItem(storageKey));
+
+  return mergedValue;
+}
+
 export function TeacherClassesProvider({
   children,
 }: TeacherClassesProviderProps) {
-  const { currentUser, role, token } = useAuth();
+  const { currentUser, role } = useAuth();
   const [classes, setClasses] = useState<TeacherClassRecord[]>([]);
   const [isHydrated, setIsHydrated] = useState(false);
-  const [hydratedStorageKey, setHydratedStorageKey] = useState<string | null>(null);
   const {
     removeClassInvitationNotification,
     removeNotificationsForClass,
@@ -303,31 +415,13 @@ export function TeacherClassesProvider({
     updateClassInvitationStatusByStudent,
     upsertClassInvitationNotification,
   } = useNotifications();
-  const storageScope = useMemo(
-    () =>
-      getUserStorageScope({
-        userId: currentUser?.id,
-        email: currentUser?.email,
-        role,
-        token,
-      }),
-    [currentUser?.email, currentUser?.id, role, token],
-  );
-  const storageKey = useMemo(
-    () => getUserScopedStorageKey(TEACHER_CLASSES_STORAGE_KEY, storageScope),
-    [storageScope],
-  );
   const teacherActor = role === "teacher" && currentUser ? currentUser : mockTeacherUser;
 
   useEffect(() => {
     setClasses([]);
     setIsHydrated(false);
-    setHydratedStorageKey(null);
 
-    const savedValue = getScopedStorageValue(
-      TEACHER_CLASSES_STORAGE_KEY,
-      storageScope,
-    );
+    const savedValue = loadTeacherClassesFromStorage();
 
     if (!savedValue) {
       setIsHydrated(true);
@@ -344,18 +438,74 @@ export function TeacherClassesProvider({
     } catch {
       setClasses([]);
     } finally {
-      setHydratedStorageKey(storageKey);
       setIsHydrated(true);
     }
-  }, [storageKey, storageScope]);
+  }, []);
 
   useEffect(() => {
-    if (!isHydrated || hydratedStorageKey !== storageKey) {
+    if (!isHydrated) {
       return;
     }
 
-    localStorage.setItem(storageKey, JSON.stringify(classes));
-  }, [classes, hydratedStorageKey, isHydrated, storageKey]);
+    localStorage.setItem(TEACHER_CLASSES_STORAGE_KEY, JSON.stringify(classes));
+  }, [classes, isHydrated]);
+
+  useEffect(() => {
+    if (!isHydrated) {
+      return;
+    }
+
+    const syncAssignmentStatuses = () => {
+      setClasses((current) => {
+        let hasChanges = false;
+
+        const nextClasses = current.map((teacherClass) => {
+          let classChanged = false;
+          const assignedQuizzes = teacherClass.assignedQuizzes.map((assignment) => {
+            const nextStatus = getAssignmentLevelStatus(assignment);
+
+            if (assignment.status === nextStatus) {
+              return assignment;
+            }
+
+            classChanged = true;
+            return {
+              ...assignment,
+              status: nextStatus,
+            };
+          });
+
+          if (!classChanged) {
+            return teacherClass;
+          }
+
+          hasChanges = true;
+          return {
+            ...teacherClass,
+            assignedQuizzes,
+          };
+        });
+
+        return hasChanges ? sortTeacherClasses(nextClasses) : current;
+      });
+    };
+
+    syncAssignmentStatuses();
+
+    const hasTrackedDeadline = classes.some((teacherClass) =>
+      teacherClass.assignedQuizzes.some((assignment) => Boolean(assignment.deadline)),
+    );
+
+    if (!hasTrackedDeadline) {
+      return;
+    }
+
+    const intervalId = window.setInterval(syncAssignmentStatuses, 30000);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [classes, isHydrated]);
 
   const value = useMemo<TeacherClassesContextValue>(
     () => ({
@@ -623,7 +773,7 @@ export function TeacherClassesProvider({
           ),
         );
       },
-      assignQuizToClasses: (quiz, classIds) => {
+      assignQuizToClasses: (quiz, classIds, settings) => {
         const activeClassIds = new Set(
           classes
             .filter((teacherClass) => teacherClass.status === "active")
@@ -638,6 +788,17 @@ export function TeacherClassesProvider({
         }
 
         const assignedAt = new Date().toISOString();
+        const deadline =
+          typeof settings?.deadline === "string" && settings.deadline
+            ? settings.deadline
+            : null;
+        const maxAttempts =
+          settings?.maxAttempts === null
+            ? null
+            : typeof settings?.maxAttempts === "number" && settings.maxAttempts > 0
+              ? Math.round(settings.maxAttempts)
+              : 1;
+        const allowLateSubmissions = Boolean(settings?.allowLateSubmissions);
         const assignedClassIds: string[] = [];
 
         setClasses((current) =>
@@ -652,17 +813,25 @@ export function TeacherClassesProvider({
               }
 
               assignedClassIds.push(item.id);
+              const assignmentId = createTeacherClassAssignmentId();
 
               const assignedQuizzes = [
                 {
-                  id: createTeacherClassAssignmentId(),
+                  id: assignmentId,
+                  assignmentId,
                   classId: item.id,
                   ...quiz,
                   assignedAt,
+                  deadline,
+                  maxAttempts,
+                  allowLateSubmissions,
                   assignedBy: teacherActor.id,
                   assignedByName: teacherActor.fullName,
                   visibility: "class-members" as const,
-                  status: "assigned" as const,
+                  status: getAssignmentLevelStatus({
+                    deadline,
+                    allowLateSubmissions,
+                  }),
                 },
                 ...item.assignedQuizzes,
               ];
@@ -678,6 +847,56 @@ export function TeacherClassesProvider({
         );
 
         return assignedClassIds;
+      },
+      syncAssignedQuizDetails: (quizId, values) => {
+        const normalizedTitle = values.title.trim();
+        const normalizedTopic = values.topic.trim();
+        const normalizedQuestionCount = Math.max(
+          0,
+          Math.round(values.questionCount),
+        );
+
+        setClasses((current) => {
+          let hasChanges = false;
+
+          const nextClasses = current.map((item) => {
+            let classChanged = false;
+            const assignedQuizzes = item.assignedQuizzes.map((assignment) => {
+              if (assignment.quizId !== quizId) {
+                return assignment;
+              }
+
+              if (
+                assignment.title === normalizedTitle &&
+                assignment.topic === normalizedTopic &&
+                assignment.questionCount === normalizedQuestionCount
+              ) {
+                return assignment;
+              }
+
+              classChanged = true;
+              return {
+                ...assignment,
+                title: normalizedTitle,
+                topic: normalizedTopic,
+                questionCount: normalizedQuestionCount,
+              };
+            });
+
+            if (!classChanged) {
+              return item;
+            }
+
+            hasChanges = true;
+            return {
+              ...item,
+              assignedQuizzes,
+              updatedAt: new Date().toISOString(),
+            };
+          });
+
+          return hasChanges ? sortTeacherClasses(nextClasses) : current;
+        });
       },
       removeQuizFromClass: (classId, quizId) => {
         const targetClass = classes.find((item) => item.id === classId);

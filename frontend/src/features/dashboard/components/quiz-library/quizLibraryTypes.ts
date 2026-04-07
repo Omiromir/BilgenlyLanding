@@ -25,10 +25,13 @@ export interface QuizAssignmentContext {
   className: string;
   classSubject: string;
   assignedAt: string;
+  deadline: string | null;
+  maxAttempts: number | null;
+  allowLateSubmissions: boolean;
   assignedBy: string;
   assignedByName: string;
   visibility: "class-members";
-  status: "assigned";
+  status: "active" | "expired";
 }
 
 export interface QuizQuestionRecord {
@@ -36,6 +39,17 @@ export interface QuizQuestionRecord {
   text: string;
   options: string[];
   correctIndex: number;
+  correctIndexes?: number[];
+  tags?: string[];
+  questionType?: "Multiple choice" | "True/False";
+  selectionMode?: "single" | "multiple";
+  explanation?: string;
+  imageEnabled?: boolean;
+  imageUrl?: string;
+  points?: number;
+  estimatedMinutes?: number;
+  answerOrder?: "fixed" | "shuffle";
+  required?: boolean;
 }
 
 export interface QuizRecord {
@@ -128,5 +142,6 @@ export interface QuizCardAction {
   label: string;
   icon: LucideIcon;
   variant?: "primary" | "secondary" | "soft" | "ghost";
+  iconDisplay?: "both" | "icon-only" | "label-only";
   onClick?: () => void;
 }

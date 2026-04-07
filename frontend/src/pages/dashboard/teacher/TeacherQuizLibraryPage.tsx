@@ -33,6 +33,12 @@ import {
   DashboardButton,
   dashboardPageClassName,
 } from "../../../features/dashboard/components/DashboardPrimitives";
+import { AssignmentSettingsForm } from "../../../features/assignments/AssignmentControls";
+import {
+  DEFAULT_ASSIGNMENT_SETTINGS_VALUES,
+  validateAssignmentSettings,
+  type AssignmentSettingsFormValues,
+} from "../../../features/assignments/assignmentConstraints";
 import {
   LibrarySectionHeader,
   LibraryTabs,
@@ -46,6 +52,7 @@ import type {
   QuizCardMetadataItem,
   QuizLibraryItem,
 } from "../../../features/dashboard/components/quiz-library/quizLibraryTypes";
+import { useQuizLauncher } from "../../../features/quiz-session/useQuizLauncher";
 import {
   isDraftQuiz,
   isPublicDiscoveryQuiz,
@@ -66,6 +73,7 @@ export function TeacherQuizLibraryPage() {
   const { classes, assignQuizToClasses } = useTeacherClasses();
   const { quizzes, deleteQuiz, duplicateQuizToLibrary, publishQuiz, toggleSavedQuiz } =
     useQuizLibrary();
+  const { openQuiz } = useQuizLauncher();
   const teacherQuizLibraryItems = getQuizLibraryItemsForRole(quizzes, "teacher");
   const initialTab = location.state?.libraryTab as TeacherLibraryTab | undefined;
   const [activeTab, setActiveTab] = useState<TeacherLibraryTab>(
@@ -79,7 +87,11 @@ export function TeacherQuizLibraryPage() {
   const [quizPendingAssignment, setQuizPendingAssignment] =
     useState<QuizLibraryItem | null>(null);
   const [selectedClassIds, setSelectedClassIds] = useState<string[]>([]);
+  const [assignmentSettings, setAssignmentSettings] = useState<AssignmentSettingsFormValues>(
+    DEFAULT_ASSIGNMENT_SETTINGS_VALUES,
+  );
   const [assignmentError, setAssignmentError] = useState("");
+  const [assignmentDeadlineError, setAssignmentDeadlineError] = useState("");
   const [assignmentFeedback, setAssignmentFeedback] = useState<string | null>(null);
   const deferredSearch = useDeferredValue(search);
   const shouldShowStatusFilter = activeTab === "my-quizzes";
@@ -198,12 +210,16 @@ export function TeacherQuizLibraryPage() {
   useEffect(() => {
     if (!quizPendingAssignment) {
       setSelectedClassIds([]);
+      setAssignmentSettings(DEFAULT_ASSIGNMENT_SETTINGS_VALUES);
       setAssignmentError("");
+      setAssignmentDeadlineError("");
       return;
     }
 
     setSelectedClassIds([]);
+    setAssignmentSettings(DEFAULT_ASSIGNMENT_SETTINGS_VALUES);
     setAssignmentError("");
+    setAssignmentDeadlineError("");
   }, [quizPendingAssignment]);
 
   const getAssignedClassIdsForQuiz = (quizId: string) =>
@@ -223,6 +239,13 @@ export function TeacherQuizLibraryPage() {
       return;
     }
 
+    const validation = validateAssignmentSettings(assignmentSettings);
+
+    if (validation.errors.deadline) {
+      setAssignmentDeadlineError(validation.errors.deadline);
+      return;
+    }
+
     const assignedClassIds = assignQuizToClasses(
       {
         quizId: quizPendingAssignment.id,
@@ -231,6 +254,11 @@ export function TeacherQuizLibraryPage() {
         questionCount: quizPendingAssignment.questionCount,
       },
       selectedClassIds,
+      {
+        deadline: validation.deadline,
+        maxAttempts: validation.maxAttempts,
+        allowLateSubmissions: false,
+      },
     );
 
     if (!assignedClassIds.length) {
@@ -289,6 +317,39 @@ export function TeacherQuizLibraryPage() {
     return undefined;
   };
 
+  const getTeacherPracticeLabel = (item: QuizLibraryItem) => {
+    if (item.practiceState === "in-progress") {
+      return "Continue Test Run";
+    }
+
+    if (item.practiceState === "completed") {
+      return "Review Test Run";
+    }
+
+    return item.isOwner ? "Test Run" : "Practice";
+  };
+
+  const openTeacherQuiz = (item: QuizLibraryItem) => {
+    openQuiz({
+      quizId: item.id,
+      viewerRole: "teacher",
+      preferredSession:
+        item.practiceState === "completed"
+          ? "completed"
+          : item.practiceState === "in-progress"
+            ? "in-progress"
+            : undefined,
+      navigationState: {
+        launchSourceType: item.isOwner ? "quiz-library" : "discover",
+        launchSourceLabel: item.isOwner
+          ? "Teacher quiz library"
+          : "Public quiz discovery",
+        returnToPath: "/dashboard/teacher/quiz-library",
+        returnToLabel: "Back to quiz library",
+      },
+    });
+  };
+
   const getTeacherActions = (item: QuizLibraryItem): QuizCardAction[] => {
     if (!item.isOwner) {
       return [
@@ -296,12 +357,14 @@ export function TeacherQuizLibraryPage() {
           label: item.isSaved ? "Saved Copy" : "Save Copy",
           icon: Save,
           variant: "soft",
+          iconDisplay: "icon-only",
           onClick: () => toggleSavedQuiz(item.id, "teacher"),
         },
         {
           label: "Duplicate",
           icon: Layers3,
           variant: "ghost",
+          iconDisplay: "icon-only",
           onClick: () => {
             const duplicate = duplicateQuizToLibrary(item.id, "teacher");
 
@@ -313,9 +376,11 @@ export function TeacherQuizLibraryPage() {
           },
         },
         {
-          label: "Practice",
+          label: getTeacherPracticeLabel(item),
           icon: Play,
           variant: "ghost",
+          iconDisplay: "label-only",
+          onClick: () => openTeacherQuiz(item),
         },
       ];
     }
@@ -325,16 +390,19 @@ export function TeacherQuizLibraryPage() {
         {
           label: "Restore",
           icon: Rocket,
+          iconDisplay: "label-only",
         },
         {
           label: "Duplicate",
           icon: Layers3,
           variant: "secondary",
+          iconDisplay: "icon-only",
         },
         {
           label: "Delete",
           icon: Trash2,
           variant: "ghost",
+          iconDisplay: "icon-only",
           onClick: () => deleteQuiz(item.id, "teacher"),
         },
       ];
@@ -345,6 +413,7 @@ export function TeacherQuizLibraryPage() {
         {
           label: "Review Draft",
           icon: FilePenLine,
+          iconDisplay: "label-only",
           onClick: () =>
             navigate("/dashboard/teacher/generate-quiz", {
               state: { editQuizId: item.id },
@@ -354,39 +423,51 @@ export function TeacherQuizLibraryPage() {
           label: "Publish",
           icon: Send,
           variant: "secondary",
+          iconDisplay: "label-only",
           onClick: () => publishQuiz(item.id, "teacher", item.visibility),
         },
         {
           label: "Delete",
           icon: Trash2,
           variant: "ghost",
+          iconDisplay: "icon-only",
           onClick: () => deleteQuiz(item.id, "teacher"),
         },
       ];
     }
 
-    return [
-      {
-        label: "Assign Quiz",
-        icon: Rocket,
-        onClick: () => setQuizPendingAssignment(item),
-      },
-      {
-        label: "Edit",
-        icon: FilePenLine,
-        variant: "secondary",
-        onClick: () =>
-          navigate("/dashboard/teacher/generate-quiz", {
-            state: { editQuizId: item.id },
-          }),
-      },
+      return [
+        {
+          label: "Assign Quiz",
+          icon: Rocket,
+          iconDisplay: "label-only",
+          onClick: () => setQuizPendingAssignment(item),
+        },
+        {
+          label: getTeacherPracticeLabel(item),
+          icon: Play,
+          variant: "soft",
+          iconDisplay: "icon-only",
+          onClick: () => openTeacherQuiz(item),
+        },
+        {
+          label: "Edit",
+          icon: FilePenLine,
+          variant: "secondary",
+          iconDisplay: "icon-only",
+          onClick: () =>
+            navigate("/dashboard/teacher/generate-quiz", {
+              state: { editQuizId: item.id },
+            }),
+        },
         {
           label: "Delete",
           icon: Trash2,
           variant: "ghost",
+          iconDisplay: "icon-only",
           onClick: () => deleteQuiz(item.id, "teacher"),
         },
-    ];
+      ];
   };
 
   return (
@@ -550,6 +631,17 @@ export function TeacherQuizLibraryPage() {
                 </div>
               )}
             </div>
+
+            <AssignmentSettingsForm
+              values={assignmentSettings}
+              deadlineError={assignmentDeadlineError}
+              onChange={(nextValues) => {
+                setAssignmentSettings(nextValues);
+                if (assignmentDeadlineError) {
+                  setAssignmentDeadlineError("");
+                }
+              }}
+            />
 
             {assignmentError ? (
               <div className="rounded-[18px] border border-[var(--dashboard-danger-soft)] bg-[var(--dashboard-danger-soft)]/40 px-4 py-3">

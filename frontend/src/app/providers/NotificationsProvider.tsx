@@ -8,12 +8,14 @@ import {
 } from "react";
 import {
   buildClassInvitationNotification,
+  buildQuizFollowUpNotification,
   sortDashboardNotifications,
 } from "../../features/dashboard/components/notifications/notificationUtils";
 import type {
   ClassInvitationNotificationInput,
   DashboardNotification,
-  DashboardNotificationStatus,
+  ClassInvitationNotificationStatus,
+  QuizFollowUpNotificationInput,
 } from "../../features/dashboard/components/notifications/notificationTypes";
 
 const NOTIFICATIONS_STORAGE_KEY = "bilgenly_notifications";
@@ -33,16 +35,19 @@ interface NotificationsContextValue {
   upsertClassInvitationNotification: (
     input: ClassInvitationNotificationInput,
   ) => DashboardNotification;
+  sendQuizFollowUpNotification: (
+    input: QuizFollowUpNotificationInput,
+  ) => DashboardNotification;
   markNotificationRead: (notificationId: string) => void;
   markAllNotificationsRead: (recipientUserId: string) => void;
   updateClassInvitationStatus: (
     notificationId: string,
-    status: DashboardNotificationStatus,
+    status: ClassInvitationNotificationStatus,
   ) => void;
   updateClassInvitationStatusByStudent: (
     relatedClassId: string,
     studentId: string,
-    status: DashboardNotificationStatus,
+    status: ClassInvitationNotificationStatus,
   ) => void;
   removeClassInvitationNotification: (
     relatedClassId: string,
@@ -67,7 +72,8 @@ function sanitizeNotificationRecord(
 ): DashboardNotification | null {
   if (
     typeof notification.id !== "string" ||
-    notification.type !== "class_invitation" ||
+    (notification.type !== "class_invitation" &&
+      notification.type !== "quiz_follow_up") ||
     typeof notification.recipientUserId !== "string" ||
     typeof notification.recipientEmail !== "string" ||
     typeof notification.relatedClassId !== "string" ||
@@ -94,7 +100,53 @@ function sanitizeNotificationRecord(
     notification.status === "declined" ||
     notification.status === "removed"
       ? notification.status
-      : "pending";
+      : notification.type === "quiz_follow_up"
+        ? "sent"
+        : "pending";
+
+  if (notification.type === "quiz_follow_up") {
+    if (
+      typeof notification.quizId !== "string" ||
+      typeof notification.quizTitle !== "string" ||
+      typeof notification.assignmentId !== "string" ||
+      (notification.followUpKind !== "needs_review" &&
+        notification.followUpKind !== "reassign_quiz" &&
+        notification.followUpKind !== "follow_up_practice")
+    ) {
+      return null;
+    }
+
+    return {
+      id: notification.id,
+      type: "quiz_follow_up",
+      recipientUserId: notification.recipientUserId,
+      recipientEmail: notification.recipientEmail,
+      title:
+        typeof notification.title === "string" && notification.title.trim()
+          ? notification.title
+          : `Quiz follow-up: ${notification.quizTitle}`,
+      message:
+        typeof notification.message === "string" && notification.message.trim()
+          ? notification.message
+          : `${notification.senderName} sent a follow-up for ${notification.quizTitle}.`,
+      createdAt: timestamp,
+      updatedAt,
+      read: Boolean(notification.read),
+      actionType: "open_assigned_quiz",
+      relatedClassId: notification.relatedClassId,
+      relatedClassName: notification.relatedClassName,
+      senderName: notification.senderName,
+      senderEmail: notification.senderEmail,
+      studentId: notification.studentId,
+      studentName: notification.studentName,
+      studentEmail: notification.studentEmail,
+      status: "sent",
+      quizId: notification.quizId,
+      quizTitle: notification.quizTitle,
+      assignmentId: notification.assignmentId,
+      followUpKind: notification.followUpKind,
+    };
+  }
 
   return {
     id: notification.id,
@@ -126,6 +178,36 @@ function sanitizeNotificationRecord(
 
 interface NotificationsProviderProps {
   children: ReactNode;
+}
+
+function rebuildInvitationNotification(
+  notification: DashboardNotification,
+  status: ClassInvitationNotificationStatus,
+): DashboardNotification {
+  if (notification.type !== "class_invitation") {
+    return notification;
+  }
+
+  return buildClassInvitationNotification(
+    {
+      recipientUserId: notification.recipientUserId,
+      recipientEmail: notification.recipientEmail,
+      relatedClassId: notification.relatedClassId,
+      relatedClassName: notification.relatedClassName,
+      senderName: notification.senderName,
+      senderEmail: notification.senderEmail,
+      studentId: notification.studentId,
+      studentName: notification.studentName,
+      studentEmail: notification.studentEmail,
+    },
+    {
+      existingId: notification.id,
+      createdAt: notification.createdAt,
+      updatedAt: new Date().toISOString(),
+      read: true,
+      status,
+    },
+  );
 }
 
 export function NotificationsProvider({
@@ -244,6 +326,18 @@ export function NotificationsProvider({
 
         return nextNotification;
       },
+      sendQuizFollowUpNotification: (input) => {
+        const nextNotification = buildQuizFollowUpNotification(input, {
+          updatedAt: new Date().toISOString(),
+          read: false,
+        });
+
+        setNotifications((current) =>
+          sortDashboardNotifications([nextNotification, ...current]),
+        );
+
+        return nextNotification;
+      },
       markNotificationRead: (notificationId) => {
         setNotifications((current) =>
           sortDashboardNotifications(
@@ -278,12 +372,7 @@ export function NotificationsProvider({
           sortDashboardNotifications(
             current.map((notification) =>
               notification.id === notificationId
-                ? {
-                    ...notification,
-                    status,
-                    read: true,
-                    updatedAt: new Date().toISOString(),
-                  }
+                ? rebuildInvitationNotification(notification, status)
                 : notification,
             ),
           ),
@@ -293,14 +382,10 @@ export function NotificationsProvider({
         setNotifications((current) =>
           sortDashboardNotifications(
             current.map((notification) =>
+              notification.type === "class_invitation" &&
               notification.relatedClassId === relatedClassId &&
               notification.studentId === studentId
-                ? {
-                    ...notification,
-                    status,
-                    read: true,
-                    updatedAt: new Date().toISOString(),
-                  }
+                ? rebuildInvitationNotification(notification, status)
                 : notification,
             ),
           ),
@@ -311,6 +396,7 @@ export function NotificationsProvider({
           current.filter(
             (notification) =>
               !(
+                notification.type === "class_invitation" &&
                 notification.relatedClassId === relatedClassId &&
                 notification.studentId === studentId
               ),
@@ -321,7 +407,8 @@ export function NotificationsProvider({
         setNotifications((current) =>
           sortDashboardNotifications(
             current.map((notification) =>
-              notification.relatedClassId === relatedClassId
+              notification.relatedClassId === relatedClassId &&
+              notification.type === "class_invitation"
                 ? buildClassInvitationNotification(
                     {
                       recipientUserId: notification.recipientUserId,

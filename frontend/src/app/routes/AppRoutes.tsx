@@ -11,6 +11,7 @@ import { StudentProfilePage } from "../../pages/dashboard/student/StudentProfile
 import { StudentQuizLibraryPage } from "../../pages/dashboard/student/StudentQuizLibraryPage";
 import { StudentResultsPage } from "../../pages/dashboard/student/StudentResultsPage";
 import { StudentSettingsPage } from "../../pages/dashboard/student/StudentSettingsPage";
+import { QuizSessionPage } from "../../pages/dashboard/shared/QuizSessionPage";
 import { TeacherAnalyticsPage } from "../../pages/dashboard/teacher/TeacherAnalyticsPage";
 import { TeacherClassesPage } from "../../pages/dashboard/teacher/TeacherClassesPage";
 import { TeacherGenerateQuizPage } from "../../pages/dashboard/teacher/TeacherGenerateQuizPage";
@@ -46,6 +47,10 @@ export function AppRoutes() {
                 path="generate-quiz"
                 element={<TeacherGenerateQuizPage />}
               />
+              <Route
+                path="quizzes/:quizId"
+                element={<QuizSessionPage viewerRole="teacher" />}
+              />
               <Route path="profile" element={<TeacherProfilePage />} />
               <Route
                 path="quiz-library"
@@ -74,6 +79,10 @@ export function AppRoutes() {
               />
               <Route path="quiz-library" element={<StudentQuizLibraryPage />} />
               <Route path="generate-quiz" element={<StudentGenerateQuizPage />} />
+              <Route
+                path="quizzes/:quizId"
+                element={<QuizSessionPage viewerRole="student" />}
+              />
               <Route path="profile" element={<StudentProfilePage />} />
               <Route path="results" element={<StudentResultsPage />} />
               <Route path="badges" element={<StudentBadgesPage />} />

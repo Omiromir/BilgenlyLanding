@@ -11,7 +11,7 @@ import {
 import { SectionCard } from "../../../features/dashboard/components/SectionCard";
 import { StatCard } from "../../../features/dashboard/components/StatCard";
 import { NotificationList } from "../../../features/dashboard/components/notifications/NotificationsComponents";
-import type { DashboardNotification } from "../../../features/dashboard/components/notifications/notificationTypes";
+import type { ClassInvitationNotification } from "../../../features/dashboard/components/notifications/notificationTypes";
 import { useDashboardPageMeta } from "../../../features/dashboard/hooks/useDashboardPageMeta";
 
 export function StudentNotificationsPage() {
@@ -21,6 +21,7 @@ export function StudentNotificationsPage() {
     getNotificationsForRecipientIdentity,
     getUnreadCountForRecipientIdentity,
     markNotificationRead,
+    updateClassInvitationStatus,
   } = useNotifications();
   const { respondToClassInvitation } = useTeacherClasses();
   const [feedback, setFeedback] = useState<string | null>(null);
@@ -57,14 +58,16 @@ export function StudentNotificationsPage() {
       )
     : 0;
   const pendingCount = notifications.filter(
-    (notification) => notification.status === "pending",
+    (notification) =>
+      notification.type === "class_invitation" && notification.status === "pending",
   ).length;
 
   useEffect(() => {
     setFeedback(null);
   }, [studentViewer?.id]);
 
-  const handleAcceptInvitation = (notification: DashboardNotification) => {
+  const handleAcceptInvitation = (notification: ClassInvitationNotification) => {
+    updateClassInvitationStatus(notification.id, "accepted");
     respondToClassInvitation(
       notification.relatedClassId,
       notification.studentId,
@@ -76,7 +79,8 @@ export function StudentNotificationsPage() {
     );
   };
 
-  const handleDeclineInvitation = (notification: DashboardNotification) => {
+  const handleDeclineInvitation = (notification: ClassInvitationNotification) => {
+    updateClassInvitationStatus(notification.id, "declined");
     respondToClassInvitation(
       notification.relatedClassId,
       notification.studentId,

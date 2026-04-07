@@ -10,7 +10,7 @@ export type TeacherClassStudentStatus =
   | "declined"
   | "removed";
 export type TeacherClassAssignmentVisibility = "class-members";
-export type TeacherClassAssignedQuizStatus = "assigned";
+export type TeacherClassAssignedQuizStatus = "active" | "expired";
 
 export interface TeacherClassStudent {
   id: string;
@@ -29,12 +29,16 @@ export interface TeacherClassStudent {
 
 export interface TeacherClassAssignedQuiz {
   id: string;
+  assignmentId: string;
   classId: string;
   quizId: string;
   title: string;
   topic: string;
   questionCount: number;
   assignedAt: string;
+  deadline: string | null;
+  maxAttempts: number | null;
+  allowLateSubmissions: boolean;
   assignedBy: string;
   assignedByName: string;
   visibility: TeacherClassAssignmentVisibility;

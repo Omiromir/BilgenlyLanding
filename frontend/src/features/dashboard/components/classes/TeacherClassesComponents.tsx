@@ -1,5 +1,6 @@
 import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
+import { Link } from "react-router";
 import {
   Archive,
   BookOpen,
@@ -25,6 +26,17 @@ import {
 import {
   Dialog,
 } from "../../../../components/ui/dialog";
+import {
+  AssignmentSettingsForm,
+  AttemptsBadge,
+  DeadlineBadge,
+} from "../../../assignments/AssignmentControls";
+import {
+  DEFAULT_ASSIGNMENT_SETTINGS_VALUES,
+  getAssignmentLevelStatus,
+  validateAssignmentSettings,
+  type AssignmentSettingsFormValues,
+} from "../../../assignments/assignmentConstraints";
 import { EmptyStateBlock } from "../EmptyStateBlock";
 import {
   DashboardModalBody,
@@ -183,18 +195,24 @@ export function TeacherClassCard({
       student.status === "invited" && student.invitationStatus === "pending",
   ).length;
   const summaryRows = [
-    `${joinedCount} ${
-      joinedCount === 1 ? "joined student" : "joined students"
-    }`,
-    `${pendingCount} ${
-      pendingCount === 1 ? "pending invite" : "pending invites"
-    }`,
-    `${teacherClass.quizCount} ${
-      teacherClass.quizCount === 1 ? "quiz" : "quizzes"
-    }`,
+    joinedCount > 0
+      ? `${joinedCount} ${
+          joinedCount === 1 ? "joined student" : "joined students"
+        }`
+      : null,
+    pendingCount > 0
+      ? `${pendingCount} ${
+          pendingCount === 1 ? "pending invite" : "pending invites"
+        }`
+      : null,
+    teacherClass.quizCount > 0
+      ? `${teacherClass.quizCount} ${
+          teacherClass.quizCount === 1 ? "quiz" : "quizzes"
+        }`
+      : null,
     `Code ${teacherClass.inviteCode}`,
     `Updated ${formatTeacherClassDate(teacherClass.updatedAt)}`,
-  ];
+  ].filter((item): item is string => Boolean(item));
 
   return (
     <DashboardSurface
@@ -784,6 +802,14 @@ interface TeacherClassDetailsPanelProps {
   teacherClass: TeacherClassRecord | null;
   hasClasses: boolean;
   membershipFeedback?: string | null;
+  assignmentInsights?: Record<
+    string,
+    {
+      attemptedStudentsCount: number;
+      exhaustedStudentsCount: number;
+      missedDeadlineCount: number;
+    }
+  >;
   onOpenAddStudents?: () => void;
   onOpenAssignQuiz?: () => void;
   onRemoveAssignedQuiz?: (quiz: TeacherClassAssignedQuiz) => void;
@@ -793,6 +819,7 @@ export function TeacherClassDetailsPanel({
   teacherClass,
   hasClasses,
   membershipFeedback,
+  assignmentInsights = {},
   onOpenAddStudents,
   onOpenAssignQuiz,
   onRemoveAssignedQuiz,
@@ -995,14 +1022,30 @@ export function TeacherClassDetailsPanel({
           <div className="space-y-3">
             {teacherClass.assignedQuizzes.map((quiz) => (
               <div
-                key={`${teacherClass.id}-${quiz.quizId}`}
+                key={`${teacherClass.id}-${quiz.assignmentId}`}
                 className={cn(
                   dashboardInsetBlockClassName,
-                  "flex items-center justify-between gap-4",
+                  "space-y-4",
                 )}
               >
-                <div>
-                  <p className="font-semibold text-[var(--dashboard-text-strong)]">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                  <div className="flex flex-wrap gap-2">
+                    <DashboardBadge
+                      tone={getAssignmentLevelStatus(quiz) === "expired" ? "danger" : "success"}
+                    >
+                      {getAssignmentLevelStatus(quiz)}
+                    </DashboardBadge>
+                    <DeadlineBadge
+                      deadline={quiz.deadline}
+                      expired={getAssignmentLevelStatus(quiz) === "expired"}
+                    />
+                    <AttemptsBadge maxAttempts={quiz.maxAttempts} />
+                    <DashboardBadge tone="neutral">
+                      {assignmentInsights[quiz.assignmentId]?.attemptedStudentsCount ?? 0} students attempted
+                    </DashboardBadge>
+                  </div>
+                  <p className="mt-3 font-semibold text-[var(--dashboard-text-strong)]">
                     {quiz.title}
                   </p>
                   <p className="mt-1 text-sm text-[var(--dashboard-text-soft)]">
@@ -1014,6 +1057,13 @@ export function TeacherClassDetailsPanel({
                   <p className="text-sm text-[var(--dashboard-text-soft)]">
                     Assigned {formatTeacherClassDate(quiz.assignedAt)}
                   </p>
+                  <DashboardButton asChild type="button" size="sm" variant="secondary">
+                    <Link
+                      to={`/dashboard/teacher/analytics?classId=${teacherClass.id}&assignmentId=${quiz.assignmentId}`}
+                    >
+                      View Results
+                    </Link>
+                  </DashboardButton>
                   {onRemoveAssignedQuiz ? (
                     <DashboardButton
                       type="button"
@@ -1025,6 +1075,15 @@ export function TeacherClassDetailsPanel({
                       Remove
                     </DashboardButton>
                   ) : null}
+                </div>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <DashboardBadge tone="info">
+                    {assignmentInsights[quiz.assignmentId]?.missedDeadlineCount ?? 0} missed deadline
+                  </DashboardBadge>
+                  <DashboardBadge tone="warning">
+                    {assignmentInsights[quiz.assignmentId]?.exhaustedStudentsCount ?? 0} exhausted attempts
+                  </DashboardBadge>
                 </div>
               </div>
             ))}
@@ -1047,7 +1106,14 @@ interface AssignQuizDialogProps {
   teacherClass: TeacherClassRecord | null;
   quizzes: QuizLibraryItem[];
   onOpenChange: (open: boolean) => void;
-  onAssignQuiz: (quiz: QuizLibraryItem) => void;
+  onAssignQuiz: (
+    quiz: QuizLibraryItem,
+    settings: {
+      deadline: string | null;
+      maxAttempts: number | null;
+      allowLateSubmissions: boolean;
+    },
+  ) => void;
 }
 
 export function AssignQuizDialog({
@@ -1058,11 +1124,19 @@ export function AssignQuizDialog({
   onAssignQuiz,
 }: AssignQuizDialogProps) {
   const [search, setSearch] = useState("");
+  const [selectedQuizId, setSelectedQuizId] = useState<string | null>(null);
+  const [settings, setSettings] = useState<AssignmentSettingsFormValues>(
+    DEFAULT_ASSIGNMENT_SETTINGS_VALUES,
+  );
+  const [deadlineError, setDeadlineError] = useState("");
   const deferredSearch = useDeferredValue(search);
 
   useEffect(() => {
     if (!open) {
       setSearch("");
+      setSelectedQuizId(null);
+      setSettings(DEFAULT_ASSIGNMENT_SETTINGS_VALUES);
+      setDeadlineError("");
     }
   }, [open]);
 
@@ -1086,6 +1160,29 @@ export function AssignQuizDialog({
     });
   }, [deferredSearch, quizzes]);
   const isArchivedClass = teacherClass?.status === "archived";
+  const selectedQuiz =
+    filteredQuizzes.find((quiz) => quiz.id === selectedQuizId) ??
+    quizzes.find((quiz) => quiz.id === selectedQuizId) ??
+    null;
+
+  const handleAssign = () => {
+    if (!selectedQuiz) {
+      return;
+    }
+
+    const validation = validateAssignmentSettings(settings);
+
+    if (validation.errors.deadline) {
+      setDeadlineError(validation.errors.deadline);
+      return;
+    }
+
+    onAssignQuiz(selectedQuiz, {
+      deadline: validation.deadline,
+      maxAttempts: validation.maxAttempts,
+      allowLateSubmissions: false,
+    });
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -1116,14 +1213,21 @@ export function AssignQuizDialog({
               className="border-dashed"
             />
           ) : filteredQuizzes.length ? (
-            <div className="max-h-[420px] space-y-2 overflow-y-auto pr-1">
+            <div className="space-y-5">
+              <div className="max-h-[320px] space-y-2 overflow-y-auto pr-1">
               {filteredQuizzes.map((quiz) => {
                 const isAlreadyAssigned = assignedQuizIds.has(quiz.id);
+                const isSelected = selectedQuizId === quiz.id;
 
                 return (
                   <div
                     key={quiz.id}
-                    className="flex items-center justify-between gap-4 rounded-[18px] border border-[var(--dashboard-border-soft)] bg-white px-5 py-4 transition hover:border-[var(--dashboard-border)] hover:shadow-[0_10px_30px_rgba(18,32,58,0.06)]"
+                    className={cn(
+                      "flex items-center justify-between gap-4 rounded-[18px] border bg-white px-5 py-4 transition hover:shadow-[0_10px_30px_rgba(18,32,58,0.06)]",
+                      isSelected
+                        ? "border-[var(--dashboard-brand)]"
+                        : "border-[var(--dashboard-border-soft)] hover:border-[var(--dashboard-border)]",
+                    )}
                   >
                     <div className="min-w-0">
                       <div className="flex flex-wrap gap-2">
@@ -1153,16 +1257,45 @@ export function AssignQuizDialog({
                     <DashboardButton
                       type="button"
                       size="sm"
-                      variant={isAlreadyAssigned ? "ghost" : "secondary"}
+                      variant={isAlreadyAssigned ? "ghost" : isSelected ? "primary" : "secondary"}
                       className="min-w-[96px] rounded-[16px] px-5"
                       disabled={isAlreadyAssigned}
-                      onClick={() => onAssignQuiz(quiz)}
+                      onClick={() => {
+                        setSelectedQuizId(quiz.id);
+                        if (deadlineError) {
+                          setDeadlineError("");
+                        }
+                      }}
                     >
-                      {isAlreadyAssigned ? "Assigned" : "Assign"}
+                      {isAlreadyAssigned ? "Assigned" : isSelected ? "Selected" : "Choose"}
                     </DashboardButton>
                   </div>
                 );
               })}
+              </div>
+
+              {selectedQuiz ? (
+                <div className="space-y-4 rounded-[20px] border border-[var(--dashboard-border-soft)] bg-white px-4 py-4">
+                  <div>
+                    <p className="font-semibold text-[var(--dashboard-text-strong)]">
+                      Assignment settings
+                    </p>
+                    <p className="mt-1 text-sm leading-6 text-[var(--dashboard-text-soft)]">
+                      {selectedQuiz.title}
+                    </p>
+                  </div>
+                  <AssignmentSettingsForm
+                    values={settings}
+                    deadlineError={deadlineError}
+                    onChange={(nextValues) => {
+                      setSettings(nextValues);
+                      if (deadlineError) {
+                        setDeadlineError("");
+                      }
+                    }}
+                  />
+                </div>
+              ) : null}
             </div>
           ) : (
             <EmptyStateBlock
@@ -1187,6 +1320,16 @@ export function AssignQuizDialog({
           >
             Close
           </DashboardButton>
+          {!isArchivedClass ? (
+            <DashboardButton
+              type="button"
+              size="sm"
+              disabled={!selectedQuiz}
+              onClick={handleAssign}
+            >
+              Assign quiz
+            </DashboardButton>
+          ) : null}
         </DashboardModalFooter>
         </div>
       </DashboardModalContent>

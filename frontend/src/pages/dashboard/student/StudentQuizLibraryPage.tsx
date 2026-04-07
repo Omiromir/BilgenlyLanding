@@ -16,6 +16,7 @@ import { Link, useLocation, useNavigate } from "react-router";
 import { useAuth } from "../../../app/providers/AuthProvider";
 import { useTeacherClasses } from "../../../app/providers/TeacherClassesProvider";
 import { useQuizLibrary } from "../../../app/providers/QuizLibraryProvider";
+import { useQuizSessions } from "../../../app/providers/QuizSessionProvider";
 import { DashboardPageHeader } from "../../../features/dashboard/components/DashboardPageHeader";
 import {
   DashboardButton,
@@ -46,6 +47,7 @@ import {
   matchesQuizFilters,
   matchesQuizSearch,
 } from "../../../features/dashboard/components/quiz-library/quizLibraryUtils";
+import { useQuizLauncher } from "../../../features/quiz-session/useQuizLauncher";
 import { cn } from "../../../components/ui/utils";
 import { useDashboardPageMeta } from "../../../features/dashboard/hooks/useDashboardPageMeta";
 
@@ -60,6 +62,8 @@ export function StudentQuizLibraryPage() {
   const { classes } = useTeacherClasses();
   const { quizzes, deleteQuiz, duplicateQuizToLibrary, toggleSavedQuiz } =
     useQuizLibrary();
+  const { sessions } = useQuizSessions();
+  const { openQuiz } = useQuizLauncher();
   const studentViewer = currentUser?.role === "student" ? currentUser : null;
   const studentIdentity = useMemo(
     () => ({
@@ -69,8 +73,8 @@ export function StudentQuizLibraryPage() {
     [studentViewer?.email, studentViewer?.id],
   );
   const studentSources = useMemo(
-    () => buildStudentQuizLibrarySources(classes, quizzes, studentIdentity),
-    [classes, quizzes, studentIdentity],
+    () => buildStudentQuizLibrarySources(classes, quizzes, studentIdentity, sessions),
+    [classes, quizzes, sessions, studentIdentity],
   );
   const initialTab = location.state?.libraryTab as StudentLibraryTab | undefined;
   const [activeTab, setActiveTab] = useState<StudentLibraryTab>(
@@ -301,19 +305,28 @@ export function StudentQuizLibraryPage() {
 
   const getPracticeLabel = (item: QuizLibraryItem) => {
     if (item.sourceType === "assigned" || item.isAssigned) {
-      if (item.practiceState === "completed") {
-        return "View Quiz";
+      const assignedItem = item as StudentAssignedQuizLibraryItem;
+
+      if (assignedItem.assignmentState.status === "completed") {
+        return "View Results";
       }
 
-      if (item.practiceState === "in-progress") {
+      if (assignedItem.assignmentState.status === "in_progress") {
         return "Continue Quiz";
+      }
+
+      if (
+        assignedItem.assignmentState.status === "expired" ||
+        assignedItem.assignmentState.status === "attempts_exhausted"
+      ) {
+        return "Open Assignment";
       }
 
       return "Start Quiz";
     }
 
     if (item.practiceState === "completed") {
-      return "Practice Again";
+      return "Review Results";
     }
 
     if (item.practiceState === "in-progress") {
@@ -323,12 +336,47 @@ export function StudentQuizLibraryPage() {
     return "Start Practice";
   };
 
+  const openStudentQuiz = (item: QuizLibraryItem) => {
+    openQuiz({
+      quizId: item.id,
+      viewerRole: "student",
+      assignmentId: item.assignmentContext?.assignmentId,
+      preferredSession:
+        item.sourceType === "assigned" || item.isAssigned
+          ? (() => {
+              const assignedItem = item as StudentAssignedQuizLibraryItem;
+
+              return assignedItem.assignmentState.status === "completed"
+                ? "completed"
+                : assignedItem.assignmentState.status === "in_progress"
+                  ? "in-progress"
+                  : undefined;
+            })()
+          : item.practiceState === "completed"
+          ? "completed"
+          : item.practiceState === "in-progress"
+            ? "in-progress"
+            : undefined,
+      navigationState: {
+        launchSourceType: item.sourceType ?? "quiz-library",
+        launchSourceLabel:
+          item.sourceType === "assigned"
+            ? `${item.assignmentContext?.className ?? "Class"} assignment`
+            : item.sourceLabel,
+        returnToPath: "/dashboard/student/quiz-library",
+        returnToLabel: "Back to quiz library",
+      },
+    });
+  };
+
   const getStudentActions = (item: QuizLibraryItem): QuizCardAction[] => {
     if (item.sourceType === "assigned" || item.isAssigned) {
       return [
         {
           label: getPracticeLabel(item),
           icon: Play,
+          iconDisplay: "label-only",
+          onClick: () => openStudentQuiz(item),
         },
       ];
     }
@@ -338,6 +386,8 @@ export function StudentQuizLibraryPage() {
         {
           label: getPracticeLabel(item),
           icon: Play,
+          iconDisplay: "label-only",
+          onClick: () => openStudentQuiz(item),
         },
         {
           label:
@@ -346,6 +396,7 @@ export function StudentQuizLibraryPage() {
               : "Edit Set",
           icon: FilePenLine,
           variant: "secondary",
+          iconDisplay: "icon-only",
           onClick: () =>
             navigate("/dashboard/student/generate-quiz", {
               state: { editQuizId: item.id },
@@ -355,6 +406,7 @@ export function StudentQuizLibraryPage() {
           label: "Delete",
           icon: Trash2,
           variant: "ghost",
+          iconDisplay: "icon-only",
           onClick: () => deleteQuiz(item.id, "student"),
         },
       ];
@@ -363,13 +415,16 @@ export function StudentQuizLibraryPage() {
     if (item.sourceType === "history" && item.practiceState === "completed") {
       return [
         {
-          label: "Practice Again",
+          label: "Review Results",
           icon: RotateCcw,
+          iconDisplay: "label-only",
+          onClick: () => openStudentQuiz(item),
         },
         {
           label: item.isSaved ? "Saved" : "Save",
           icon: item.isSaved ? BookMarked : BookmarkPlus,
           variant: item.isSaved ? "soft" : "ghost",
+          iconDisplay: "icon-only",
           onClick: () => toggleSavedQuiz(item.id, "student"),
         },
       ];
@@ -379,17 +434,21 @@ export function StudentQuizLibraryPage() {
       {
         label: getPracticeLabel(item),
         icon: Play,
+        iconDisplay: "label-only",
+        onClick: () => openStudentQuiz(item),
       },
       {
         label: item.isSaved ? "Saved" : "Save",
         icon: item.isSaved ? BookMarked : BookmarkPlus,
         variant: item.isSaved ? "soft" : "ghost",
+        iconDisplay: "icon-only",
         onClick: () => toggleSavedQuiz(item.id, "student"),
       },
       {
         label: "Duplicate",
         icon: Layers3,
         variant: "ghost",
+        iconDisplay: "icon-only",
         onClick: () => {
           const duplicate = duplicateQuizToLibrary(item.id, "student");
 

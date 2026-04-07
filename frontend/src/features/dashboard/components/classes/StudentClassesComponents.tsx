@@ -15,56 +15,6 @@ import type { StudentAssignedQuizLibraryItem } from "../quiz-library/studentQuiz
 import type { QuizCardAction } from "../quiz-library/quizLibraryTypes";
 import { formatTeacherClassDate } from "./teacherClassesUtils";
 
-interface InvitationStatusBadgeProps {
-  status: StudentClassMembershipRecord["membership"]["invitationStatus"];
-}
-
-export function InvitationStatusBadge({ status }: InvitationStatusBadgeProps) {
-  const tone =
-    status === "accepted"
-      ? "success"
-      : status === "declined"
-        ? "danger"
-        : status === "removed"
-          ? "neutral"
-          : "warning";
-  const label =
-    status === "accepted"
-      ? "Accepted"
-      : status === "declined"
-        ? "Declined"
-        : status === "removed"
-          ? "Removed"
-          : "Pending";
-
-  return <DashboardBadge tone={tone}>{label}</DashboardBadge>;
-}
-
-interface MemberStatusBadgeProps {
-  status: StudentClassMembershipRecord["membership"]["status"];
-}
-
-export function MemberStatusBadge({ status }: MemberStatusBadgeProps) {
-  const tone =
-    status === "joined"
-      ? "success"
-      : status === "declined"
-        ? "danger"
-        : status === "removed"
-          ? "neutral"
-          : "warning";
-  const label =
-    status === "joined"
-      ? "Joined"
-      : status === "declined"
-        ? "Declined"
-        : status === "removed"
-          ? "Removed"
-          : "Invited";
-
-  return <DashboardBadge tone={tone}>{label}</DashboardBadge>;
-}
-
 interface StudentClassCardProps {
   membershipRecord: StudentClassMembershipRecord;
   isSelected?: boolean;
@@ -77,6 +27,20 @@ export function StudentClassCard({
   onOpen,
 }: StudentClassCardProps) {
   const { teacherClass, membership } = membershipRecord;
+  const joinedMembersCount = teacherClass.students.filter(
+    (student) => student.status === "joined",
+  ).length;
+  const summaryRows = [
+    teacherClass.assignedQuizzes.length > 0
+      ? `${teacherClass.assignedQuizzes.length} ${
+          teacherClass.assignedQuizzes.length === 1
+            ? "assigned quiz"
+            : "assigned quizzes"
+        }`
+      : null,
+    `Joined ${formatTeacherClassDate(membership.joinedAt ?? membership.invitedAt)}`,
+    joinedMembersCount > 0 ? `${joinedMembersCount} members` : null,
+  ].filter((item): item is string => Boolean(item));
 
   return (
     <DashboardSurface
@@ -99,8 +63,6 @@ export function StudentClassCard({
     >
       <article className="space-y-4">
         <div className="flex flex-wrap gap-2">
-          <MemberStatusBadge status={membership.status} />
-          <InvitationStatusBadge status={membership.invitationStatus} />
           {teacherClass.subject ? (
             <DashboardBadge tone="info">{teacherClass.subject}</DashboardBadge>
           ) : null}
@@ -117,17 +79,15 @@ export function StudentClassCard({
         </div>
 
         <div className="flex flex-wrap gap-2">
-          <DashboardBadge tone="neutral" size="md">
-            {teacherClass.assignedQuizzes.length}{" "}
-            {teacherClass.assignedQuizzes.length === 1 ? "assigned quiz" : "assigned quizzes"}
-          </DashboardBadge>
-          <DashboardBadge tone="neutral" size="md">
-            Joined {formatTeacherClassDate(membership.joinedAt ?? membership.invitedAt)}
-          </DashboardBadge>
-          <DashboardBadge tone="neutral" size="md">
-            {teacherClass.students.filter((student) => student.status === "joined").length}{" "}
-            members
-          </DashboardBadge>
+          {summaryRows.map((item) => (
+            <DashboardBadge
+              key={`${teacherClass.id}-${item}`}
+              tone="neutral"
+              size="md"
+            >
+              {item}
+            </DashboardBadge>
+          ))}
         </div>
       </article>
     </DashboardSurface>
@@ -197,8 +157,6 @@ export function StudentClassDetailsPanel({
     <DashboardSurface radius="xl" padding="md" className="space-y-6">
       <div className="space-y-4">
         <div className="flex flex-wrap gap-2">
-          <MemberStatusBadge status={membership.status} />
-          <InvitationStatusBadge status={membership.invitationStatus} />
           {teacherClass.subject ? (
             <DashboardBadge tone="info">{teacherClass.subject}</DashboardBadge>
           ) : null}

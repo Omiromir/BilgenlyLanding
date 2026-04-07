@@ -1,11 +1,15 @@
-export type DashboardNotificationType = "class_invitation";
-export type DashboardNotificationStatus =
+export type DashboardNotificationType = "class_invitation" | "quiz_follow_up";
+export type ClassInvitationNotificationStatus =
   | "pending"
   | "accepted"
   | "declined"
   | "removed";
+export type QuizFollowUpKind =
+  | "needs_review"
+  | "reassign_quiz"
+  | "follow_up_practice";
 
-export interface DashboardNotification {
+interface DashboardNotificationBase {
   id: string;
   type: DashboardNotificationType;
   recipientUserId: string;
@@ -15,7 +19,6 @@ export interface DashboardNotification {
   createdAt: string;
   updatedAt: string;
   read: boolean;
-  actionType: "class_invitation";
   relatedClassId: string;
   relatedClassName: string;
   senderName: string;
@@ -23,8 +26,27 @@ export interface DashboardNotification {
   studentId: string;
   studentName: string;
   studentEmail: string;
-  status: DashboardNotificationStatus;
 }
+
+export interface ClassInvitationNotification extends DashboardNotificationBase {
+  type: "class_invitation";
+  actionType: "class_invitation";
+  status: ClassInvitationNotificationStatus;
+}
+
+export interface QuizFollowUpNotification extends DashboardNotificationBase {
+  type: "quiz_follow_up";
+  actionType: "open_assigned_quiz";
+  status: "sent";
+  quizId: string;
+  quizTitle: string;
+  assignmentId: string;
+  followUpKind: QuizFollowUpKind;
+}
+
+export type DashboardNotification =
+  | ClassInvitationNotification
+  | QuizFollowUpNotification;
 
 export interface ClassInvitationNotificationInput {
   recipientUserId: string;
@@ -36,4 +58,20 @@ export interface ClassInvitationNotificationInput {
   studentId: string;
   studentName: string;
   studentEmail: string;
+}
+
+export interface QuizFollowUpNotificationInput {
+  recipientUserId: string;
+  recipientEmail: string;
+  relatedClassId: string;
+  relatedClassName: string;
+  senderName: string;
+  senderEmail: string;
+  studentId: string;
+  studentName: string;
+  studentEmail: string;
+  quizId: string;
+  quizTitle: string;
+  assignmentId: string;
+  followUpKind: QuizFollowUpKind;
 }

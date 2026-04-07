@@ -1,4 +1,11 @@
 import {
+  buildAssignmentConstraintState,
+  getAssignmentLevelStatus,
+  toAssignmentConstraintSource,
+  type AssignmentConstraintState,
+} from "../../../assignments/assignmentConstraints";
+import type { QuizSessionRecord } from "../../../quiz-session/quizSessionTypes";
+import {
   getQuizLibraryItemsForRole,
   mapQuizRecordToLibraryItem,
 } from "../../../../app/providers/QuizLibraryProvider";
@@ -37,6 +44,7 @@ export interface StudentAssignedQuizLibraryItem extends QuizLibraryItem {
   sourceType: "assigned";
   isAssigned: true;
   assignmentContext: NonNullable<QuizLibraryItem["assignmentContext"]>;
+  assignmentState: AssignmentConstraintState;
 }
 
 export interface StudentQuizLibrarySources {
@@ -118,6 +126,7 @@ function buildAssignedQuizLibraryItems(
   classes: TeacherClassRecord[],
   quizzes: QuizRecord[],
   studentIdentity: StudentIdentity,
+  sessions: QuizSessionRecord[],
 ): StudentAssignedQuizLibraryItem[] {
   return sortTeacherClasses(classes).flatMap((teacherClass) => {
     const activeMembership = teacherClass.students.find(
@@ -138,6 +147,29 @@ function buildAssignedQuizLibraryItems(
       }
 
       const libraryItem = mapQuizRecordToLibraryItem(quizRecord, "student");
+      const assignmentContext = {
+        assignmentId: assignment.assignmentId,
+        classId: assignment.classId,
+        className: teacherClass.name,
+        classSubject: teacherClass.subject,
+        assignedAt: assignment.assignedAt,
+        deadline: assignment.deadline,
+        maxAttempts: assignment.maxAttempts,
+        allowLateSubmissions: assignment.allowLateSubmissions,
+        assignedBy: assignment.assignedBy,
+        assignedByName: assignment.assignedByName,
+        visibility: assignment.visibility,
+        status: getAssignmentLevelStatus(assignment),
+      } satisfies NonNullable<QuizLibraryItem["assignmentContext"]>;
+      const assignmentState = buildAssignmentConstraintState(
+        toAssignmentConstraintSource(assignmentContext),
+        sessions,
+        "student",
+      );
+
+      if (!assignmentState) {
+        return [];
+      }
 
       return [
         {
@@ -146,17 +178,26 @@ function buildAssignedQuizLibraryItems(
           isAssigned: true as const,
           sourceLabel: `${teacherClass.name} assignment`,
           note: `Assigned by ${assignment.assignedByName} on ${formatTeacherClassDate(assignment.assignedAt)}.`,
-          assignmentContext: {
-            assignmentId: assignment.id,
-            classId: assignment.classId,
-            className: teacherClass.name,
-            classSubject: teacherClass.subject,
-            assignedAt: assignment.assignedAt,
-            assignedBy: assignment.assignedBy,
-            assignedByName: assignment.assignedByName,
-            visibility: assignment.visibility,
-            status: assignment.status,
-          },
+          practiceState:
+            assignmentState.status === "completed"
+              ? "completed"
+              : assignmentState.status === "in_progress"
+                ? "in-progress"
+                : "ready",
+          practiceProgressLabel:
+            assignmentState.status === "completed"
+              ? `${assignmentState.attemptsUsed} ${assignmentState.attemptsUsed === 1 ? "attempt" : "attempts"} completed`
+              : assignmentState.status === "in_progress"
+                ? `Attempt ${assignmentState.activeAttempt?.attemptNumber ?? assignmentState.attemptsUsed + 1} in progress`
+                : assignmentState.status === "expired"
+                  ? "Deadline passed"
+                  : assignmentState.status === "attempts_exhausted"
+                    ? "No attempts remaining"
+                    : assignmentState.maxAttempts === null
+                      ? `${assignmentState.attemptsUsed} attempts used`
+                      : `${assignmentState.attemptsRemaining} ${assignmentState.attemptsRemaining === 1 ? "attempt" : "attempts"} left`,
+          assignmentContext,
+          assignmentState,
         } satisfies StudentAssignedQuizLibraryItem,
       ];
     });
@@ -167,6 +208,7 @@ export function buildStudentQuizLibrarySources(
   classes: TeacherClassRecord[],
   quizzes: QuizRecord[],
   studentIdentity: StudentIdentity,
+  sessions: QuizSessionRecord[] = [],
 ): StudentQuizLibrarySources {
   if (!studentIdentity.userId && !studentIdentity.email) {
     return {
@@ -224,7 +266,12 @@ export function buildStudentQuizLibrarySources(
       })),
   );
 
-  const assigned = buildAssignedQuizLibraryItems(classes, quizzes, studentIdentity);
+  const assigned = buildAssignedQuizLibraryItems(
+    classes,
+    quizzes,
+    studentIdentity,
+    sessions,
+  );
 
   const personalRecent = sortQuizItemsByUpdatedAt(
     dedupeQuizLibraryItems([...personalGenerated, ...personalSaved, ...discover])

@@ -24,15 +24,24 @@ import type {
 } from "../../../features/dashboard/components/quiz-library/studentQuizLibrarySources";
 import type { QuizCardAction } from "../../../features/dashboard/components/quiz-library/quizLibraryTypes";
 import { useQuizLibrary } from "../../../app/providers/QuizLibraryProvider";
+import { useQuizSessions } from "../../../app/providers/QuizSessionProvider";
 import { useDashboardPageMeta } from "../../../features/dashboard/hooks/useDashboardPageMeta";
+import { useQuizLauncher } from "../../../features/quiz-session/useQuizLauncher";
 
-function getAssignedQuizActionLabel(practiceState?: string) {
-  if (practiceState === "completed") {
-    return "View Quiz";
+function getAssignedQuizActionLabel(item: StudentAssignedQuizLibraryItem) {
+  if (item.assignmentState.status === "completed") {
+    return "View Results";
   }
 
-  if (practiceState === "in-progress") {
+  if (item.assignmentState.status === "in_progress") {
     return "Continue Quiz";
+  }
+
+  if (
+    item.assignmentState.status === "expired" ||
+    item.assignmentState.status === "attempts_exhausted"
+  ) {
+    return "Open Assignment";
   }
 
   return "Start Quiz";
@@ -45,6 +54,8 @@ export function StudentClassesPage() {
   const { currentUser } = useAuth();
   const { classes, getStudentMemberships } = useTeacherClasses();
   const { quizzes } = useQuizLibrary();
+  const { sessions } = useQuizSessions();
+  const { openQuiz } = useQuizLauncher();
   const studentViewer = currentUser?.role === "student" ? currentUser : null;
   const studentIdentity = useMemo(
     () => ({
@@ -57,8 +68,8 @@ export function StudentClassesPage() {
   const [search, setSearch] = useState("");
   const deferredSearch = useDeferredValue(search);
   const studentSources = useMemo(
-    () => buildStudentQuizLibrarySources(classes, quizzes, studentIdentity),
-    [classes, quizzes, studentIdentity],
+    () => buildStudentQuizLibrarySources(classes, quizzes, studentIdentity, sessions),
+    [classes, quizzes, sessions, studentIdentity],
   );
   const joinedMemberships = useMemo(
     () =>
@@ -125,13 +136,33 @@ export function StudentClassesPage() {
     item: StudentAssignedQuizLibraryItem,
   ): QuizCardAction[] => [
     {
-      label: getAssignedQuizActionLabel(item.practiceState),
+      label: getAssignedQuizActionLabel(item),
       icon: Play,
+      iconDisplay: "label-only",
+      onClick: () =>
+        openQuiz({
+          quizId: item.id,
+          viewerRole: "student",
+          assignmentId: item.assignmentContext.assignmentId,
+          preferredSession:
+            item.assignmentState.status === "completed"
+              ? "completed"
+              : item.assignmentState.status === "in_progress"
+                ? "in-progress"
+                : undefined,
+          navigationState: {
+            launchSourceType: "classes",
+            launchSourceLabel: `${item.assignmentContext.className} class workspace`,
+            returnToPath: "/dashboard/student/classes",
+            returnToLabel: "Back to classes",
+          },
+        }),
     },
     {
       label: "Open Library",
       icon: BookOpen,
       variant: "secondary",
+      iconDisplay: "icon-only",
       onClick: () =>
         navigate("/dashboard/student/quiz-library", {
           state: { libraryTab: "assigned" },

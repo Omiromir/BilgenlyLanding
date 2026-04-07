@@ -9,6 +9,12 @@ import {
   SearchX,
   UserRound,
 } from "../../../../components/icons/AppIcons";
+import {
+  AttemptProgressIndicator,
+  AttemptsBadge,
+  DeadlineBadge,
+  QuizStatusBadge,
+} from "../../../assignments/AssignmentControls";
 import { cn } from "../../../../components/ui/utils";
 import {
   Dialog,
@@ -265,6 +271,10 @@ export function ClassAssignmentMeta({
           <span>Visible through class membership</span>
         </div>
       </div>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <DeadlineBadge deadline={assignmentContext.deadline} />
+        <AttemptsBadge maxAttempts={assignmentContext.maxAttempts} />
+      </div>
     </div>
   );
 }
@@ -289,6 +299,37 @@ interface QuizCardProps {
   metadata: QuizCardMetadataItem[];
   actions: QuizCardAction[];
   badgeLabel?: string;
+}
+
+function QuizCardActionButton({
+  action,
+  buttonKey,
+  isPrimaryStretch,
+}: {
+  action: QuizCardAction;
+  buttonKey: string;
+  isPrimaryStretch: boolean;
+}) {
+  const Icon = action.icon;
+  const iconDisplay = action.iconDisplay ?? "both";
+  const isIconOnly = iconDisplay === "icon-only";
+  const isLabelOnly = iconDisplay === "label-only";
+
+  return (
+    <DashboardButton
+      key={buttonKey}
+      type="button"
+      size={isIconOnly ? "icon" : "lg"}
+      variant={action.variant ?? "secondary"}
+      className={cn(isPrimaryStretch && "flex-1", isIconOnly && "shrink-0")}
+      onClick={action.onClick}
+      aria-label={isIconOnly ? action.label : undefined}
+      title={isIconOnly ? action.label : undefined}
+    >
+      {!isLabelOnly ? <Icon className="h-4 w-4" /> : null}
+      {!isIconOnly ? action.label : null}
+    </DashboardButton>
+  );
 }
 
 export function QuizCard({
@@ -342,23 +383,17 @@ export function QuizCard({
         </div>
 
         <div className="mt-5 flex flex-wrap gap-2.5 border-t border-[var(--dashboard-border-soft)] pt-5">
-          {actions.map((action, index) => {
-            const Icon = action.icon;
-
-            return (
-              <DashboardButton
-                key={`${item.id}-${action.label}`}
-                type="button"
-                size="lg"
-                variant={action.variant ?? (index === 0 ? "primary" : "secondary")}
-                className={cn(index === 0 && actions.length < 3 && "flex-1")}
-                onClick={action.onClick}
-              >
-                <Icon className="h-4 w-4" />
-                {action.label}
-              </DashboardButton>
-            );
-          })}
+          {actions.map((action, index) => (
+            <QuizCardActionButton
+              key={`${item.id}-${action.label}`}
+              action={{
+                ...action,
+                variant: action.variant ?? (index === 0 ? "primary" : "secondary"),
+              }}
+              buttonKey={`${item.id}-${action.label}`}
+              isPrimaryStretch={index === 0 && actions.length < 3}
+            />
+          ))}
         </div>
       </article>
     </DashboardSurface>
@@ -384,6 +419,7 @@ export function AssignedQuizCard({
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="flex flex-wrap gap-2">
             <QuizSourceBadge label="Assigned" />
+            <QuizStatusBadge status={item.assignmentState.status} />
             <VisibilityBadge visibility={item.visibility} />
             {badgeLabel ? (
               <DashboardBadge tone="info">
@@ -431,6 +467,14 @@ export function AssignedQuizCard({
           <ClassAssignmentMeta assignmentContext={item.assignmentContext} />
         </div>
 
+        <div className="mt-5 rounded-[20px] border border-[var(--dashboard-border-soft)] bg-white px-4 py-4">
+          <AttemptProgressIndicator
+            attemptsUsed={item.assignmentState.attemptsUsed}
+            maxAttempts={item.assignmentState.maxAttempts}
+            status={item.assignmentState.status}
+          />
+        </div>
+
         <div className="mt-5 flex flex-wrap gap-2">
           {item.tags.map((tag) => (
             <span
@@ -443,23 +487,17 @@ export function AssignedQuizCard({
         </div>
 
         <div className="mt-5 flex flex-wrap gap-2.5 border-t border-[var(--dashboard-border-soft)] pt-5">
-          {actions.map((action, index) => {
-            const Icon = action.icon;
-
-            return (
-              <DashboardButton
-                key={`${item.assignmentContext.assignmentId}-${action.label}`}
-                type="button"
-                size="lg"
-                variant={action.variant ?? (index === 0 ? "primary" : "secondary")}
-                className={cn(index === 0 && actions.length < 3 && "flex-1")}
-                onClick={action.onClick}
-              >
-                <Icon className="h-4 w-4" />
-                {action.label}
-              </DashboardButton>
-            );
-          })}
+          {actions.map((action, index) => (
+            <QuizCardActionButton
+              key={`${item.assignmentContext.assignmentId}-${action.label}`}
+              action={{
+                ...action,
+                variant: action.variant ?? (index === 0 ? "primary" : "secondary"),
+              }}
+              buttonKey={`${item.assignmentContext.assignmentId}-${action.label}`}
+              isPrimaryStretch={index === 0 && actions.length < 3}
+            />
+          ))}
         </div>
       </article>
     </DashboardSurface>
@@ -601,22 +639,17 @@ export function QuizPreviewDialog({
             </div>
 
             <DialogFooter className="border-t border-[var(--dashboard-border-soft)] px-6 py-5 sm:justify-start">
-              {actions.slice(0, 3).map((action, index) => {
-                const Icon = action.icon;
-
-                return (
-                  <DashboardButton
-                    key={`${item.id}-preview-action-${action.label}`}
-                    type="button"
-                    size="lg"
-                    variant={action.variant ?? (index === 0 ? "primary" : "secondary")}
-                    onClick={action.onClick}
-                  >
-                    <Icon className="h-4 w-4" />
-                    {action.label}
-                  </DashboardButton>
-                );
-              })}
+              {actions.slice(0, 3).map((action, index) => (
+                <QuizCardActionButton
+                  key={`${item.id}-preview-action-${action.label}`}
+                  action={{
+                    ...action,
+                    variant: action.variant ?? (index === 0 ? "primary" : "secondary"),
+                  }}
+                  buttonKey={`${item.id}-preview-action-${action.label}`}
+                  isPrimaryStretch={false}
+                />
+              ))}
             </DialogFooter>
           </div>
         </DialogContent>
