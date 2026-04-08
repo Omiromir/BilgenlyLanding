@@ -57,7 +57,6 @@ interface TeacherStudentRosterRow {
   student: TeacherClassStudent;
   derivedId: number;
   gender: "Male" | "Female";
-  age: number;
   averageGrade: number;
   missingDays: number;
 }
@@ -94,12 +93,11 @@ function deriveStudentMetrics(
   return {
     derivedId: 100 + (seed % 900),
     gender: seed % 2 === 0 ? "Male" : "Female",
-    age: 6 + (seed % 13),
     averageGrade: Number((5 + ((seed >> 3) % 51) / 10).toFixed(1)),
     missingDays: (seed >> 5) % 21,
   } satisfies Pick<
     TeacherStudentRosterRow,
-    "derivedId" | "gender" | "age" | "averageGrade" | "missingDays"
+    "derivedId" | "gender" | "averageGrade" | "missingDays"
   >;
 }
 
@@ -117,9 +115,6 @@ export function TeacherStudentsPage() {
   const [classFilter, setClassFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] =
     useState<"all" | TeacherClassStudentStatus>("all");
-  const [ageFilter, setAgeFilter] = useState<"all" | "6-10" | "11-14" | "15-18">(
-    "all",
-  );
   const [gradeFilter, setGradeFilter] =
     useState<"all" | "high" | "mid" | "needs-attention">("all");
   const [feedback, setFeedback] = useState<string | null>(null);
@@ -155,14 +150,6 @@ export function TeacherStudentsPage() {
         deferredClassFilter === "all" ? true : row.classId === deferredClassFilter;
       const matchesStatus =
         statusFilter === "all" ? true : row.student.status === statusFilter;
-      const matchesAge =
-        ageFilter === "all"
-          ? true
-          : ageFilter === "6-10"
-            ? row.age >= 6 && row.age <= 10
-            : ageFilter === "11-14"
-              ? row.age >= 11 && row.age <= 14
-              : row.age >= 15 && row.age <= 18;
       const matchesGrade =
         gradeFilter === "all"
           ? true
@@ -172,9 +159,9 @@ export function TeacherStudentsPage() {
               ? row.averageGrade >= 7 && row.averageGrade < 8.5
               : row.averageGrade < 7;
 
-      return matchesClass && matchesStatus && matchesAge && matchesGrade;
+      return matchesClass && matchesStatus && matchesGrade;
     });
-  }, [ageFilter, deferredClassFilter, gradeFilter, rosterRows, statusFilter]);
+  }, [deferredClassFilter, gradeFilter, rosterRows, statusFilter]);
 
   const totalStudentsLabel = new Set(
     rosterRows.map((row) => row.student.email.trim().toLowerCase()),
@@ -243,7 +230,6 @@ export function TeacherStudentsPage() {
         "Student",
         "Email",
         "Gender",
-        "Age",
         "Class",
         "Subject",
         "Avg Grade",
@@ -257,7 +243,6 @@ export function TeacherStudentsPage() {
           escapeCsvValue(row.student.fullName),
           escapeCsvValue(row.student.email),
           escapeCsvValue(row.gender),
-          escapeCsvValue(row.age),
           escapeCsvValue(row.className),
           escapeCsvValue(row.classSubject || "General"),
           escapeCsvValue(row.averageGrade),
@@ -323,7 +308,6 @@ export function TeacherStudentsPage() {
           onClick={() => {
             setClassFilter("all");
             setStatusFilter("all");
-            setAgeFilter("all");
             setGradeFilter("all");
           }}
         >
@@ -389,24 +373,6 @@ export function TeacherStudentsPage() {
                       {teacherClass.status === "archived" ? " (Archived)" : ""}
                     </option>
                   ))}
-                </select>
-              </label>
-
-              <label>
-                <select
-                  value={ageFilter}
-                  onChange={(event) =>
-                    setAgeFilter(
-                      event.target.value as "all" | "6-10" | "11-14" | "15-18",
-                    )
-                  }
-                  className={`${dashboardSelectVariants({ size: "md" })} h-10 min-w-[90px] rounded-[12px] border-[var(--dashboard-border-soft)] bg-white px-3 text-sm`}
-                  aria-label="Filter students by age"
-                >
-                  <option value="all">Age</option>
-                  <option value="6-10">6-10</option>
-                  <option value="11-14">11-14</option>
-                  <option value="15-18">15-18</option>
                 </select>
               </label>
 
@@ -489,9 +455,6 @@ export function TeacherStudentsPage() {
                       Gender
                     </TableHead>
                     <TableHead className="h-12 px-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--dashboard-text-faint)]">
-                      Age
-                    </TableHead>
-                    <TableHead className="h-12 px-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--dashboard-text-faint)]">
                       Class
                     </TableHead>
                     <TableHead className="h-12 px-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--dashboard-text-faint)]">
@@ -565,10 +528,6 @@ export function TeacherStudentsPage() {
 
                         <TableCell className="px-3 py-3 text-sm text-[var(--dashboard-text-soft)]">
                           {row.gender}
-                        </TableCell>
-
-                        <TableCell className="px-3 py-3 text-sm text-[var(--dashboard-text-soft)]">
-                          {row.age}
                         </TableCell>
 
                         <TableCell className="px-3 py-3 text-sm text-[var(--dashboard-text-soft)]">

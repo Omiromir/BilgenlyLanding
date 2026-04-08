@@ -20,10 +20,6 @@ import { useAuth } from "../../../app/providers/AuthProvider";
 import { useNotifications } from "../../../app/providers/NotificationsProvider";
 import { useQuizSessions } from "../../../app/providers/QuizSessionProvider";
 import { useTeacherClasses } from "../../../app/providers/TeacherClassesProvider";
-import {
-  AttemptsBadge,
-  DeadlineBadge,
-} from "../../../features/assignments/AssignmentControls";
 import { DashboardPageHeader } from "../../../features/dashboard/components/DashboardPageHeader";
 import {
   DashboardBadge,
@@ -335,123 +331,158 @@ export function TeacherAnalyticsPage() {
         }
       />
 
-      <SectionCard
-        title="Results Workspace"
-        description=""
-        contentClassName="space-y-5"
+      <DashboardSurface
+        variant="hero"
+        radius="2xl"
+        padding="lg"
+        className="overflow-hidden"
       >
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-          <label className="min-w-0 space-y-2">
-            <span className="text-sm font-medium text-[var(--dashboard-text-strong)]">
-              Class
-            </span>
-            <select
-              value={selectedClass.id}
-              onChange={(event) => handleClassChange(event.target.value)}
-              className={cn(
-                dashboardSelectVariants({ size: "md" }),
-                "w-full border-[var(--dashboard-border-soft)] bg-white",
-              )}
-            >
-              {classOptions.map((teacherClass) => (
-                <option key={teacherClass.id} value={teacherClass.id}>
-                  {teacherClass.name}
-                </option>
-              ))}
-            </select>
-          </label>
+        <div className="grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(360px,0.92fr)] xl:items-start">
+          <div className="space-y-6">
+            <div className="flex flex-wrap items-center gap-2">
+              <DashboardBadge tone="white">Results workspace</DashboardBadge>
+              <DashboardBadge tone="white">{selectedClass.name}</DashboardBadge>
+            </div>
 
-          <label className="min-w-0 space-y-2">
-            <span className="text-sm font-medium text-[var(--dashboard-text-strong)]">
-              Assigned quiz
-            </span>
-            <select
-              value={selectedAssignment.assignmentId}
-              onChange={(event) => handleAssignmentChange(event.target.value)}
-              className={cn(
-                dashboardSelectVariants({ size: "md" }),
-                "w-full border-[var(--dashboard-border-soft)] bg-white",
-              )}
-            >
-              {selectedClass.assignedQuizzes.map((assignment) => (
-                <option key={assignment.assignmentId} value={assignment.assignmentId}>
-                  {assignment.title}
-                </option>
-              ))}
-            </select>
-          </label>
+            <div className="space-y-3">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-white/70">
+                Assigned quiz
+              </p>
+              <h2 className="max-w-3xl text-[2rem] font-semibold tracking-[-0.04em] text-white md:text-[2.6rem]">
+                {selectedAssignment.title}
+              </h2>
+              <p className="max-w-2xl text-[15px] leading-7 text-white/80">
+                Move from class-wide outcomes into individual follow-up without losing the assignment context. Filters stay close to the quiz, and the roster stays anchored below.
+              </p>
+            </div>
 
-          <label className="min-w-0 space-y-2">
-            <span className="text-sm font-medium text-[var(--dashboard-text-strong)]">
-              Status
-            </span>
-            <select
-              value={statusFilter}
-              onChange={(event) =>
-                setStatusFilter(
-                  event.target.value as
-                    | "all"
-                    | "active"
-                    | "completed"
-                    | "in_progress"
-                    | "expired"
-                    | "attempts_exhausted",
-                )
-              }
-              className={cn(
-                dashboardSelectVariants({ size: "md" }),
-                "w-full border-[var(--dashboard-border-soft)] bg-white",
-              )}
-            >
-              <option value="all">All statuses</option>
-              <option value="active">Available</option>
-              <option value="completed">Finished</option>
-              <option value="in_progress">In progress</option>
-              <option value="expired">Expired</option>
-              <option value="attempts_exhausted">Attempts exhausted</option>
-            </select>
-          </label>
+            <div className="flex flex-wrap gap-2">
+              <DashboardBadge tone="white">
+                {filteredRows.length} visible students
+              </DashboardBadge>
+              <DashboardBadge tone="white">
+                {selectedAssignment.questionCount} questions
+              </DashboardBadge>
+              <DashboardBadge tone="white">
+                Assigned {shortDateFormatter.format(new Date(selectedAssignment.assignedAt))}
+              </DashboardBadge>
+              <DashboardBadge tone="white">
+                {selectedAssignment.deadline
+                  ? `Due ${shortDateFormatter.format(new Date(selectedAssignment.deadline))}`
+                  : "No deadline"}
+              </DashboardBadge>
+              <DashboardBadge tone="white">
+                {selectedAssignment.maxAttempts} max attempts
+              </DashboardBadge>
+            </div>
+          </div>
 
-          <label className="min-w-0 space-y-2">
-            <span className="text-sm font-medium text-[var(--dashboard-text-strong)]">
-              Score range
-            </span>
-            <select
-              value={scoreRange}
-              onChange={(event) =>
-                setScoreRange(
-                  event.target.value as "all" | "85-100" | "70-84" | "below-70" | "missing",
-                )
-              }
-              className={cn(
-                dashboardSelectVariants({ size: "md" }),
-                "w-full border-[var(--dashboard-border-soft)] bg-white",
-              )}
-            >
-              <option value="all">All scores</option>
-              <option value="85-100">85-100</option>
-              <option value="70-84">70-84</option>
-              <option value="below-70">Below 70</option>
-              <option value="missing">No score yet</option>
-            </select>
-          </label>
+          <div className="rounded-[28px] border border-white/12 bg-white/10 p-5 shadow-[0_24px_48px_rgba(11,15,38,0.16)] backdrop-blur-sm">
+            <div className="space-y-1">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-white/70">
+                Refine view
+              </p>
+              <p className="text-sm leading-6 text-white/78">
+                Change class, narrow the cohort, and keep the roster focused on the students who need attention.
+              </p>
+            </div>
+
+            <div className="mt-5 grid gap-3 md:grid-cols-2">
+              <label className="min-w-0 space-y-2">
+                <span className="text-sm font-medium text-white/88">Class</span>
+                <select
+                  value={selectedClass.id}
+                  onChange={(event) => handleClassChange(event.target.value)}
+                  className={cn(
+                    dashboardSelectVariants({ size: "md" }),
+                    "w-full border-white/20 bg-white/96 text-[var(--dashboard-text-strong)] shadow-[0_14px_28px_rgba(11,15,38,0.08)]",
+                  )}
+                >
+                  {classOptions.map((teacherClass) => (
+                    <option key={teacherClass.id} value={teacherClass.id}>
+                      {teacherClass.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="min-w-0 space-y-2">
+                <span className="text-sm font-medium text-white/88">Assigned quiz</span>
+                <select
+                  value={selectedAssignment.assignmentId}
+                  onChange={(event) => handleAssignmentChange(event.target.value)}
+                  className={cn(
+                    dashboardSelectVariants({ size: "md" }),
+                    "w-full border-white/20 bg-white/96 text-[var(--dashboard-text-strong)] shadow-[0_14px_28px_rgba(11,15,38,0.08)]",
+                  )}
+                >
+                  {selectedClass.assignedQuizzes.map((assignment) => (
+                    <option key={assignment.assignmentId} value={assignment.assignmentId}>
+                      {assignment.title}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="min-w-0 space-y-2">
+                <span className="text-sm font-medium text-white/88">Status</span>
+                <select
+                  value={statusFilter}
+                  onChange={(event) =>
+                    setStatusFilter(
+                      event.target.value as
+                        | "all"
+                        | "active"
+                        | "completed"
+                        | "in_progress"
+                        | "expired"
+                        | "attempts_exhausted",
+                    )
+                  }
+                  className={cn(
+                    dashboardSelectVariants({ size: "md" }),
+                    "w-full border-white/20 bg-white/96 text-[var(--dashboard-text-strong)] shadow-[0_14px_28px_rgba(11,15,38,0.08)]",
+                  )}
+                >
+                  <option value="all">All statuses</option>
+                  <option value="active">Available</option>
+                  <option value="completed">Finished</option>
+                  <option value="in_progress">In progress</option>
+                  <option value="expired">Expired</option>
+                  <option value="attempts_exhausted">Attempts exhausted</option>
+                </select>
+              </label>
+
+              <label className="min-w-0 space-y-2">
+                <span className="text-sm font-medium text-white/88">Score range</span>
+                <select
+                  value={scoreRange}
+                  onChange={(event) =>
+                    setScoreRange(
+                      event.target.value as
+                        | "all"
+                        | "85-100"
+                        | "70-84"
+                        | "below-70"
+                        | "missing",
+                    )
+                  }
+                  className={cn(
+                    dashboardSelectVariants({ size: "md" }),
+                    "w-full border-white/20 bg-white/96 text-[var(--dashboard-text-strong)] shadow-[0_14px_28px_rgba(11,15,38,0.08)]",
+                  )}
+                >
+                  <option value="all">All scores</option>
+                  <option value="85-100">85-100</option>
+                  <option value="70-84">70-84</option>
+                  <option value="below-70">Below 70</option>
+                  <option value="missing">No score yet</option>
+                </select>
+              </label>
+            </div>
+          </div>
         </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          <DashboardBadge tone="info">{filteredRows.length} visible students</DashboardBadge>
-          <DashboardBadge tone="neutral">
-            {selectedAssignment.questionCount} questions
-          </DashboardBadge>
-          <DashboardBadge tone="neutral">
-            Assigned {shortDateFormatter.format(new Date(selectedAssignment.assignedAt))}
-          </DashboardBadge>
-          <DeadlineBadge
-            deadline={selectedAssignment.deadline}
-            expired={selectedAssignment.status === "expired"}
-          />
-          <AttemptsBadge maxAttempts={selectedAssignment.maxAttempts} />
-        </div>
-      </SectionCard>
+      </DashboardSurface>
 
       <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
         <ClassQuizAnalyticsCard
@@ -493,6 +524,7 @@ export function TeacherAnalyticsPage() {
           <SectionCard
             title="Student Results"
             description="Keep the roster visible, search inside the table, and take the next action without leaving this viewport."
+            actions={<DashboardBadge tone="info">{filteredRows.length} in view</DashboardBadge>}
             contentClassName="space-y-4"
           >
             {!filteredRows.length ? (
@@ -504,12 +536,25 @@ export function TeacherAnalyticsPage() {
               />
             ) : (
               <div className="space-y-4">
-                <DashboardSearchField
-                  value={studentSearch}
-                  onChange={(event) => setStudentSearch(event.target.value)}
-                  placeholder="Search student name or email..."
-                  inputClassName="border-[var(--dashboard-border-soft)] bg-white"
-                />
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                  <DashboardSearchField
+                    value={studentSearch}
+                    onChange={(event) => setStudentSearch(event.target.value)}
+                    placeholder="Search student name or email..."
+                    containerClassName="w-full max-w-xl"
+                    inputClassName="border-[var(--dashboard-border-soft)] bg-white"
+                  />
+                  <div className="flex flex-wrap gap-2">
+                    <DashboardBadge tone="neutral">
+                      {analytics.rows.length} total students
+                    </DashboardBadge>
+                    {selectedRow ? (
+                      <DashboardBadge tone="info">
+                        Reviewing {selectedRow.student.fullName}
+                      </DashboardBadge>
+                    ) : null}
+                  </div>
+                </div>
                 <div className="overflow-hidden rounded-[18px] border border-[var(--dashboard-border-soft)] bg-white">
                   <div className="max-h-[430px] overflow-auto">
                     <Table className="min-w-[940px]">
@@ -573,6 +618,7 @@ export function TeacherAnalyticsPage() {
           <SectionCard
             title="Actionable Analytics"
             description="Switch between class summary, question friction, score spread, and intervention queue without pushing the student panel off screen."
+            actions={<DashboardBadge tone="neutral">4 analysis lenses</DashboardBadge>}
             contentClassName="space-y-4"
           >
             <Tabs
@@ -584,7 +630,7 @@ export function TeacherAnalyticsPage() {
               }
               className="space-y-4"
             >
-              <TabsList className="grid h-auto w-full grid-cols-2 rounded-[18px] bg-[var(--dashboard-surface-muted)] p-1 md:grid-cols-4">
+              <TabsList className="grid h-auto w-full grid-cols-2 rounded-[20px] border border-[var(--dashboard-border-soft)] bg-[var(--dashboard-bg-elevated)]/95 p-1.5 shadow-[0_16px_32px_rgba(18,32,58,0.05)] md:grid-cols-4">
                 <TabsTrigger value="summary" className="rounded-[14px]">
                   Summary
                 </TabsTrigger>
