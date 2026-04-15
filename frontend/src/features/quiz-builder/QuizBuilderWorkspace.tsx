@@ -1,34 +1,42 @@
-import { type ChangeEvent, useEffect, useRef, useState } from "react";
+import {
+  type ChangeEvent,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   AlertCircle,
   ArrowDown,
   ArrowUp,
+  Camera,
   CheckCircle2,
+  ChevronDown,
   ChevronRight,
+  CircleDot,
+  Clock3,
   Download,
-  FileJson,
-  FileText,
-  LoaderCircle,
-  PencilLine,
+  GripVerticalIcon,
+  MoreHorizontal,
   PlayCircle,
   Plus,
   RefreshCw,
   Save,
-  ScanSearch,
-  Sparkles,
   Trash2,
-  Upload,
   Wand2,
   XCircle,
 } from "../../components/icons/AppIcons";
 import { AnimatePresence, motion } from "motion/react";
 import { useLocation, useNavigate } from "react-router";
 import { useQuizLibrary } from "../../app/providers/QuizLibraryProvider";
+import { useQuizLauncher } from "../quiz-session/useQuizLauncher";
 import { cn } from "../../components/ui/utils";
 import { DashboardPageHeader } from "../dashboard/components/DashboardPageHeader";
 import {
   DashboardBadge,
   DashboardButton,
+  DashboardSearchField,
   DashboardSurface,
   dashboardInputVariants,
   dashboardInsetBlockClassName,
@@ -36,196 +44,43 @@ import {
   dashboardSelectVariants,
   dashboardTextareaVariants,
 } from "../dashboard/components/DashboardPrimitives";
+import { QuizBuilderConfigureStage } from "./components/QuizBuilderConfigureStage";
+import { QuizBuilderGenerateStage } from "./components/QuizBuilderGenerateStage";
+import { QuizBuilderInputStage } from "./components/QuizBuilderInputStage";
+import { QuizBuilderReviewChecks } from "./components/QuizBuilderReviewChecks";
+import { QuizBuilderStepper } from "./components/QuizBuilderStepper";
+import { questionTypeOptions, workspaceCopy } from "./quizBuilderCopy";
+import { QUIZ_BUILDER_LIMITS, clampText } from "./quizBuilderLimits";
 import type {
-  QuizDifficulty,
+  GeneratedQuestion,
+  InputMethod,
+  ParseStatus,
+  GenerationState,
+  ParsedSource,
+  QuestionAnswerOrder,
+  QuestionType,
+  ValidationIssue,
+  WorkspaceStage,
+  QuizBuilderWorkspaceProps,
+} from "./quizBuilderTypes";
+import {
+  applyCorrectIndexes,
+  applyQuestionType,
+  buildGeneratedQuestions,
+  buildMockExtract,
+  buildQuizDescription,
+  createQuestionId,
+  getQuestionCorrectIndexes,
+  getQuestionStatusTone,
+  getQuizDifficulty,
+  readFileAsDataUrl,
+  reorderQuestionOptions,
+} from "./quizBuilderUtils";
+import type {
   QuizLibraryStatus,
   QuizLibraryVisibility,
   QuizQuestionRecord,
 } from "../dashboard/components/quiz-library/quizLibraryTypes";
-
-type InputMethod = "upload" | "paste";
-type ParseStatus = "idle" | "processing" | "ready" | "warning" | "error";
-type GenerationState = "idle" | "running" | "success" | "failed" | "cancelled";
-type QuestionType = "Multiple choice" | "True/False" | "Short answer";
-type QuestionStatus = "unreviewed" | "edited" | "needs attention";
-type WorkspaceStage = "input" | "configure" | "generate" | "review";
-
-interface ParsedSource {
-  label: string;
-  lengthLabel: string;
-  pageEstimate: string;
-  characterCount: number;
-  extractedText: string;
-  warning?: string;
-}
-
-interface GeneratedQuestion {
-  id: string;
-  text: string;
-  options: string[];
-  correctIndex: number;
-  status: QuestionStatus;
-}
-
-interface ValidationIssue {
-  id: string;
-  questionId: string;
-  tone: "warning" | "danger";
-  label: string;
-  detail: string;
-}
-
-const quizSteps = [
-  { key: "upload", label: "Upload" },
-  { key: "configure", label: "Configure" },
-  { key: "generate", label: "Generate" },
-  { key: "review", label: "Review" },
-] as const;
-
-const questionTypeOptions: QuestionType[] = [
-  "Multiple choice",
-  "True/False",
-  "Short answer",
-];
-
-const classOptions = [
-  "Science 10A",
-  "Biology Lab",
-  "Intro to Programming",
-  "Independent study",
-];
-
-const studentGoalOptions = [
-  "Exam revision",
-  "Topic drill",
-  "Quick self-check",
-  "Deep practice",
-];
-
-interface QuizBuilderWorkspaceProps {
-  mode: "teacher" | "student";
-  title: string;
-  subtitle: string;
-}
-
-const workspaceCopy = {
-  teacher: {
-    badge: "Core MVP flow",
-    inputDescription:
-      "Start with a PDF or paste lecture text. The next step replaces this view with source review and quiz settings.",
-    configureDescription:
-      "Confirm the extracted source, then set only the quiz options that matter for the first draft.",
-    contextLabel: "Class label",
-    contextOptions: classOptions,
-    defaultContextValue: classOptions[0],
-    defaultInstructions:
-      "Prioritize conceptual clarity and keep wording friendly for secondary school students.",
-    successDescription:
-      "The generation stage is complete. Move to review to edit wording, fix issues, and finalize the quiz before saving.",
-    reviewReadyLabel: "The draft is ready for teacher use",
-    saveLabel: "Save Draft",
-    publishLabel: "Save Quiz",
-    runLabel: "Assign Quiz",
-  },
-  student: {
-    badge: "Self-learning flow",
-    inputDescription:
-      "Start with your notes, reading summary, or revision material. The next step replaces this view with a study-focused setup.",
-    configureDescription:
-      "Check the extracted source, then tailor the quiz for solo practice and revision rather than classroom delivery.",
-    contextLabel: "Study goal",
-    contextOptions: studentGoalOptions,
-    defaultContextValue: studentGoalOptions[0],
-    defaultInstructions:
-      "Keep the wording encouraging, build confidence early, and make the quiz useful for self-checking without teacher guidance.",
-    successDescription:
-      "Your self-study draft is ready. Move to review to refine questions, remove weak items, and finalize the practice set.",
-    reviewReadyLabel: "The draft is ready for self-study",
-    saveLabel: "Save Draft",
-    publishLabel: "Save Quiz",
-    runLabel: "Start Self-Test",
-  },
-} as const;
-
-function createQuestionId() {
-  return Math.random().toString(36).slice(2, 9);
-}
-
-function buildMockExtract(sourceLabel: string) {
-  return `Lecture material summary from ${sourceLabel}: Proteins are formed from amino acids linked by peptide bonds. The structure of a protein depends on the sequence of amino acids, the interactions between side chains, and the surrounding environment. Enzymes speed up reactions by lowering activation energy, and their activity can be affected by temperature and pH. Students should distinguish covalent, ionic, and hydrogen bonds, then explain why peptide bonds are unique in biological macromolecules.`;
-}
-
-function buildGeneratedQuestions(
-  title: string,
-  focus: string,
-  requestedCount: number,
-): GeneratedQuestion[] {
-  const focusLabel = focus || "the uploaded lecture";
-  const difficultyPrompt = "is most accurate";
-
-  const templates = [
-    `Which statement ${difficultyPrompt} about ${focusLabel}?`,
-    `Why is peptide bonding important in ${focusLabel}?`,
-    `Which example from ${focusLabel} would students most likely classify correctly?`,
-    `What explanation should students give after reviewing ${focusLabel}?`,
-    `Which misunderstanding is most likely if a learner only skims ${focusLabel}?`,
-    `How would you apply the central concept from ${focusLabel} in a new scenario?`,
-  ];
-
-  return Array.from({ length: requestedCount }, (_, index) => ({
-    id: createQuestionId(),
-    text:
-      index === 0
-        ? `What type of bond forms between amino acids in proteins for ${title || "this quiz"}?`
-        : templates[index % templates.length],
-    options:
-      index === 0
-        ? ["Ionic bond", "Hydrogen bond", "Peptide bond", "Covalent bond"]
-        : [
-            "It supports the core concept described in the lecture.",
-            "It contradicts the source material.",
-            "It only applies in unrelated contexts.",
-            "It is not addressed by the lecture material.",
-          ],
-    correctIndex: 2,
-    status: index < 2 ? "unreviewed" : "needs attention",
-  }));
-}
-
-function getQuestionStatusTone(status: QuestionStatus) {
-  if (status === "edited") {
-    return "success";
-  }
-  if (status === "needs attention") {
-    return "warning";
-  }
-  return "neutral";
-}
-
-function getQuizDifficulty(questionCount: number): QuizDifficulty {
-  if (questionCount <= 8) {
-    return "Beginner";
-  }
-
-  if (questionCount <= 12) {
-    return "Intermediate";
-  }
-
-  return "Advanced";
-}
-
-function buildQuizDescription(sourceText: string, focus: string) {
-  const summary = sourceText.trim().replace(/\s+/g, " ");
-  const excerpt = summary.slice(0, 148).trimEnd();
-
-  if (!summary) {
-    return focus
-      ? `AI-generated quiz focused on ${focus}.`
-      : "AI-generated quiz built from the provided source material.";
-  }
-
-  return `${excerpt}${summary.length > 148 ? "..." : ""}`;
-}
 
 export function QuizBuilderWorkspace({
   mode,
@@ -235,8 +90,10 @@ export function QuizBuilderWorkspace({
   const location = useLocation();
   const navigate = useNavigate();
   const { getQuizById, saveGeneratedQuiz } = useQuizLibrary();
+  const { openQuiz } = useQuizLauncher();
   const copy = workspaceCopy[mode];
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const questionImageInputRef = useRef<HTMLInputElement | null>(null);
 
   const [activeInput, setActiveInput] = useState<InputMethod>("upload");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -244,11 +101,15 @@ export function QuizBuilderWorkspace({
   const [pastedText, setPastedText] = useState("");
   const [parseStatus, setParseStatus] = useState<ParseStatus>("idle");
   const [parsedSource, setParsedSource] = useState<ParsedSource | null>(null);
-  const [quizTitle, setQuizTitle] = useState("");
+  const presetTitle = location.state?.presetTitle as string | undefined;
+  const presetFocus = location.state?.presetFocus as string | undefined;
+  const presetContext = location.state?.presetContext as string | undefined;
+  const [quizTitle, setQuizTitle] = useState(presetTitle ?? "");
   const [questionCount, setQuestionCount] = useState(8);
-  const [focus, setFocus] = useState("Protein structure");
-  const [language, setLanguage] = useState("English");
-  const [contextValue, setContextValue] = useState(copy.defaultContextValue);
+  const [focus, setFocus] = useState(presetFocus ?? "Protein structure");
+  const [contextValue, setContextValue] = useState(
+    presetContext ?? copy.defaultContextValue,
+  );
   const [questionTypes, setQuestionTypes] = useState<QuestionType[]>([
     "Multiple choice",
     "True/False",
@@ -267,10 +128,24 @@ export function QuizBuilderWorkspace({
     string | null
   >(null);
   const [questionSeed, setQuestionSeed] = useState(0);
+  const [reviewSearch, setReviewSearch] = useState("");
   const [publishVisibility, setPublishVisibility] =
     useState<QuizLibraryVisibility>("private");
+  const [imageUploadQuestionId, setImageUploadQuestionId] = useState<
+    string | null
+  >(null);
+  const [openQuestionMenuId, setOpenQuestionMenuId] = useState<string | null>(
+    null,
+  );
+  const [draggingOptionIndex, setDraggingOptionIndex] = useState<number | null>(
+    null,
+  );
+  const [dragOverOptionIndex, setDragOverOptionIndex] = useState<number | null>(
+    null,
+  );
   const editingQuizId = location.state?.editQuizId as string | undefined;
   const editingQuiz = editingQuizId ? getQuizById(editingQuizId) : undefined;
+  const resolvedLanguage = editingQuiz?.language ?? "English";
 
   const canParse =
     (activeInput === "upload" && selectedFile !== null) ||
@@ -283,10 +158,31 @@ export function QuizBuilderWorkspace({
     generationState !== "running";
   const resolvedQuizTitle =
     quizTitle.trim() || (mode === "student" ? `${focus || "Personal"} Practice Quiz` : "");
+  const deferredReviewSearch = useDeferredValue(reviewSearch);
   const selectedQuestion =
     questions.find((question) => question.id === selectedQuestionId) ??
     questions[0] ??
     null;
+  const selectedQuestionIndex = selectedQuestion
+    ? questions.findIndex((question) => question.id === selectedQuestion.id)
+    : -1;
+  const filteredReviewQuestions = useMemo(() => {
+    const query = deferredReviewSearch.trim().toLowerCase();
+
+    if (!query) {
+      return questions;
+    }
+
+    return questions.filter((question) =>
+      [question.text, question.explanation, ...question.options]
+        .join(" ")
+        .toLowerCase()
+        .includes(query),
+    );
+  }, [deferredReviewSearch, questions]);
+  const reviewedQuestionCount = questions.filter(
+    (question) => question.status === "edited",
+  ).length;
   const workspaceStage: WorkspaceStage =
     hasEnteredReview && questions.length > 0
       ? "review"
@@ -306,6 +202,24 @@ export function QuizBuilderWorkspace({
   }[workspaceStage];
 
   useEffect(() => {
+    if (editingQuiz) {
+      return;
+    }
+
+    if (presetTitle) {
+      setQuizTitle(presetTitle);
+    }
+
+    if (presetFocus) {
+      setFocus(presetFocus);
+    }
+
+    if (presetContext) {
+      setContextValue(presetContext);
+    }
+  }, [editingQuiz, presetContext, presetFocus, presetTitle]);
+
+  useEffect(() => {
     if (!editingQuiz || editingQuiz.ownerRole !== mode) {
       return;
     }
@@ -313,12 +227,28 @@ export function QuizBuilderWorkspace({
     setQuizTitle(editingQuiz.title);
     setQuestionCount(editingQuiz.questionCount);
     setFocus(editingQuiz.topic);
-    setLanguage(editingQuiz.language);
     setPublishVisibility(editingQuiz.visibility);
     setQuestions(
       editingQuiz.questions.map((question) => ({
         ...question,
+        questionType: question.questionType ?? "Multiple choice",
+        selectionMode: question.selectionMode ?? "single",
         options: [...question.options],
+        correctIndexes:
+          question.selectionMode === "multiple"
+            ? [...(question.correctIndexes ?? [question.correctIndex])]
+            : [question.correctIndex],
+        explanation:
+          question.explanation ??
+          "Add a short explanation so quiz takers get immediate learning feedback after submission.",
+        imageEnabled: question.imageEnabled ?? Boolean(question.imageUrl),
+        points: Math.max(1, Math.round(question.points ?? 1)),
+        estimatedMinutes: Math.max(
+          1,
+          Math.round(question.estimatedMinutes ?? 2),
+        ),
+        answerOrder: question.answerOrder ?? "fixed",
+        required: question.required ?? true,
         status: "edited",
       })),
     );
@@ -427,6 +357,11 @@ export function QuizBuilderWorkspace({
     };
   }, [focus, generationState, parseStatus, questionCount, resolvedQuizTitle]);
 
+  useEffect(() => {
+    setDraggingOptionIndex(null);
+    setDragOverOptionIndex(null);
+  }, [selectedQuestionId]);
+
   const validationIssues: ValidationIssue[] = questions.flatMap(
     (question, index, allQuestions) => {
       const issues: ValidationIssue[] = [];
@@ -454,8 +389,10 @@ export function QuizBuilderWorkspace({
       }
 
       if (
-        question.correctIndex < 0 ||
-        question.correctIndex >= question.options.length
+        getQuestionCorrectIndexes(question).some(
+          (correctIndex) =>
+            correctIndex < 0 || correctIndex >= question.options.length,
+        )
       ) {
         issues.push({
           id: `${question.id}-missing-answer`,
@@ -464,6 +401,20 @@ export function QuizBuilderWorkspace({
           label: `Question ${index + 1} has no correct answer`,
           detail:
             "Choose one correct option so students can be graded accurately.",
+        });
+      }
+
+      if (
+        question.selectionMode === "multiple" &&
+        getQuestionCorrectIndexes(question).length < 2
+      ) {
+        issues.push({
+          id: `${question.id}-multiple-answer-selection`,
+          questionId: question.id,
+          tone: "warning",
+          label: `Question ${index + 1} needs at least two correct answers`,
+          detail:
+            "If multiple-answer mode is enabled, mark at least two answers as correct.",
         });
       }
 
@@ -484,6 +435,16 @@ export function QuizBuilderWorkspace({
           tone: "warning",
           label: `Question ${index + 1} overlaps another question`,
           detail: "Consider merging or rewording to reduce repetition.",
+        });
+      }
+
+      if (question.points < 1) {
+        issues.push({
+          id: `${question.id}-invalid-points`,
+          questionId: question.id,
+          tone: "warning",
+          label: `Question ${index + 1} has invalid points`,
+          detail: "Set at least 1 point so scoring stays consistent.",
         });
       }
 
@@ -600,6 +561,112 @@ export function QuizBuilderWorkspace({
     );
   }
 
+  async function handleQuestionImageChange(
+    event: ChangeEvent<HTMLInputElement>,
+  ) {
+    const file = event.target.files?.[0];
+    const questionId = imageUploadQuestionId;
+
+    event.target.value = "";
+
+    if (!file || !questionId || !file.type.startsWith("image/")) {
+      return;
+    }
+
+    try {
+      const imageUrl = await readFileAsDataUrl(file);
+      handleQuestionChange(questionId, (question) => ({
+        ...question,
+        imageEnabled: true,
+        imageUrl,
+      }));
+    } catch {
+      return;
+    } finally {
+      setImageUploadQuestionId(null);
+    }
+  }
+
+  function handleAttachImage(questionId: string) {
+    setImageUploadQuestionId(questionId);
+    questionImageInputRef.current?.click();
+  }
+
+  function handleQuestionMenuAction(
+    questionId: string,
+    action: "up" | "down" | "duplicate" | "delete" | "regenerate",
+  ) {
+    setOpenQuestionMenuId(null);
+
+    if (action === "up" || action === "down") {
+      handleMoveQuestion(questionId, action);
+      return;
+    }
+
+    if (action === "duplicate") {
+      handleDuplicateQuestion(questionId);
+      return;
+    }
+
+    if (action === "delete") {
+      handleDeleteQuestion(questionId);
+      return;
+    }
+
+    handleRegenerateQuestion(questionId);
+  }
+
+  function handleDownloadQuizExport(format: "json" | "txt") {
+    const payload = buildQuizSavePayload("draft");
+
+    if (!payload) {
+      return;
+    }
+
+    const fileName = resolvedQuizTitle
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "") || "bilgenly-quiz";
+    const content =
+      format === "json"
+        ? JSON.stringify(payload, null, 2)
+        : [
+            `Title: ${payload.title}`,
+            `Topic: ${payload.topic}`,
+            `Visibility: ${payload.visibility}`,
+            "",
+            ...payload.questions.flatMap((question, index) => [
+              `Q${index + 1}. ${question.text}`,
+              `Type: ${question.questionType ?? "Multiple choice"} | Mode: ${
+                question.selectionMode ?? "single"
+              } | Points: ${question.points ?? 1}`,
+              ...question.options.map((option, optionIndex) => {
+                const correctIndexes =
+                  question.selectionMode === "multiple"
+                    ? question.correctIndexes ?? [question.correctIndex]
+                    : [question.correctIndex];
+                const marker = correctIndexes.includes(optionIndex) ? "[correct]" : "[ ]";
+                return `  ${marker} ${option}`;
+              }),
+              `Explanation: ${question.explanation ?? "None"}`,
+              "",
+            ]),
+          ].join("\n");
+
+    const blob = new Blob([content], {
+      type: format === "json" ? "application/json" : "text/plain",
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${fileName}.${format === "json" ? "json" : "txt"}`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  }
+
   function handleMoveQuestion(questionId: string, direction: "up" | "down") {
     setQuestions((current) => {
       const currentIndex = current.findIndex(
@@ -656,13 +723,24 @@ export function QuizBuilderWorkspace({
     handleQuestionChange(questionId, (question) => ({
       ...question,
       text: `${question.text.replace(/\s+\(refined\)$/u, "")} (refined)`,
-      options: [
-        question.options[0],
-        question.options[1],
-        `Updated answer aligned with ${focus || "the selected focus"}`,
-        question.options[3] ?? "None of the above",
-      ],
-      correctIndex: 2,
+      options:
+        question.questionType === "True/False"
+          ? ["True", "False"]
+          : [
+              question.options[0],
+              question.options[1],
+              `Updated answer aligned with ${focus || "the selected focus"}`,
+              question.options[3] ?? "None of the above",
+            ],
+      correctIndex: question.questionType === "True/False" ? 0 : 2,
+      correctIndexes:
+        question.questionType === "True/False"
+          ? [0]
+          : question.selectionMode === "multiple"
+            ? [0, 2]
+            : [2],
+      imageEnabled: question.imageEnabled,
+      explanation: `This refreshed explanation now points students back to ${focus || "the selected focus"} so the feedback stays useful after submission.`,
       status: "edited",
     }));
   }
@@ -670,9 +748,19 @@ export function QuizBuilderWorkspace({
   function handleAddQuestion() {
     const newQuestion: GeneratedQuestion = {
       id: createQuestionId(),
+      questionType: "Multiple choice",
+      selectionMode: "single",
       text: "New question prompt",
       options: ["Option A", "Option B", "Option C", "Option D"],
       correctIndex: 0,
+      correctIndexes: [0],
+      explanation:
+        "Add a short explanation here so students understand why the correct answer is right after they submit.",
+      imageEnabled: false,
+      points: 1,
+      estimatedMinutes: 2,
+      answerOrder: "fixed",
+      required: true,
       status: "edited",
     };
 
@@ -681,9 +769,9 @@ export function QuizBuilderWorkspace({
     setHasEnteredReview(true);
   }
 
-  function handleSaveQuiz(targetStatus: QuizLibraryStatus) {
+  function buildQuizSavePayload(targetStatus: QuizLibraryStatus) {
     if (!parsedSource || questions.length === 0) {
-      return;
+      return null;
     }
 
     const normalizedQuestions: QuizQuestionRecord[] = questions.map(
@@ -692,28 +780,50 @@ export function QuizBuilderWorkspace({
         text: question.text.trim(),
         options: question.options.map((option) => option.trim()),
         correctIndex: question.correctIndex,
+        correctIndexes:
+          question.selectionMode === "multiple"
+            ? getQuestionCorrectIndexes(question)
+            : undefined,
+        questionType: question.questionType,
+        selectionMode: question.selectionMode,
+        explanation: question.explanation.trim() || undefined,
+        imageEnabled: question.imageEnabled,
+        imageUrl: question.imageUrl,
+        points: Math.max(1, Math.round(question.points)),
+        estimatedMinutes: Math.max(
+          1,
+          Math.round(question.estimatedMinutes),
+        ),
+        answerOrder: question.answerOrder,
+        required: question.required,
       }),
     );
     const topic = focus.trim() || "General review";
-    const durationMinutes = Math.max(2, Math.ceil(normalizedQuestions.length * 0.8));
+    const durationMinutes = Math.max(
+      2,
+      normalizedQuestions.reduce(
+        (sum, question) => sum + Math.max(1, question.estimatedMinutes ?? 1),
+        0,
+      ),
+    );
     const visibility =
       targetStatus === "published-public" ? "public" : "private";
 
-    saveGeneratedQuiz({
+    return {
       existingQuizId: editingQuiz?.id,
       ownerRole: mode,
       title: resolvedQuizTitle,
       description: buildQuizDescription(parsedSource.extractedText, topic),
       topic,
       difficulty: getQuizDifficulty(normalizedQuestions.length),
-      language,
+      language: resolvedLanguage,
       status: targetStatus,
       visibility,
       tags: Array.from(
         new Set(
           [
             topic,
-            contextValue,
+            ...(mode === "student" ? [contextValue] : []),
             ...questionTypes,
           ].filter((value): value is string => value.trim().length > 0),
         ),
@@ -734,7 +844,25 @@ export function QuizBuilderWorkspace({
       durationMinutes,
       questions: normalizedQuestions,
       practiceState: mode === "student" ? "ready" : undefined,
-    });
+    };
+  }
+
+  function saveQuizRecord(targetStatus: QuizLibraryStatus) {
+    const payload = buildQuizSavePayload(targetStatus);
+
+    if (!payload) {
+      return null;
+    }
+
+    return saveGeneratedQuiz(payload);
+  }
+
+  function handleSaveQuiz(targetStatus: QuizLibraryStatus) {
+    const savedQuiz = saveQuizRecord(targetStatus);
+
+    if (!savedQuiz) {
+      return;
+    }
 
     navigate(
       mode === "teacher"
@@ -755,6 +883,34 @@ export function QuizBuilderWorkspace({
     );
   }
 
+  function handleOpenQuizFlow(targetStatus: QuizLibraryStatus) {
+    const savedQuiz = saveQuizRecord(targetStatus);
+
+    if (!savedQuiz) {
+      return;
+    }
+
+    openQuiz({
+      quizId: savedQuiz.id,
+      viewerRole: mode,
+      navigationState: {
+        launchSourceType: "generate-quiz",
+        launchSourceLabel:
+          mode === "teacher"
+            ? "Teacher quiz generator"
+            : "Self-study quiz generator",
+        returnToPath:
+          mode === "teacher"
+            ? "/dashboard/teacher/generate-quiz"
+            : "/dashboard/student/generate-quiz",
+        returnToLabel: "Back to quiz builder",
+        returnToState: editingQuiz?.id
+          ? { editQuizId: editingQuiz.id }
+          : undefined,
+      },
+    });
+  }
+
   function handleCancelCreation() {
     navigate(
       mode === "teacher"
@@ -769,58 +925,20 @@ export function QuizBuilderWorkspace({
   }
 
   return (
-    <div className={dashboardPageCenteredClassName}>
+    <div
+      className={
+        workspaceStage === "review"
+          ? "mx-auto max-w-[1480px] space-y-8 pt-2"
+          : dashboardPageCenteredClassName
+      }
+    >
       <DashboardPageHeader
         title={title}
         subtitle={subtitle}
         align="center"
       />
 
-      <div className="flex flex-wrap items-center justify-center gap-4">
-        {quizSteps.map((item, index) => {
-          const isActive = index === currentStepIndex;
-          const isComplete = index < currentStepIndex;
-
-          return (
-            <div key={item.key} className="flex items-center gap-4">
-              <div className="flex items-center gap-3">
-                <div
-                  className={cn(
-                    "flex h-9 w-9 items-center justify-center rounded-full text-sm font-semibold",
-                    isActive && "bg-[var(--dashboard-brand)] text-white",
-                    isComplete &&
-                      "bg-[var(--dashboard-success-soft)] text-[var(--dashboard-success)]",
-                    !isActive &&
-                      !isComplete &&
-                      "bg-[var(--dashboard-surface-muted)] text-[var(--dashboard-text-soft)]",
-                  )}
-                >
-                  {isComplete ? (
-                    <CheckCircle2 className="h-4.5 w-4.5" />
-                  ) : (
-                    index + 1
-                  )}
-                </div>
-                <span
-                  className={cn(
-                    "text-[1.02rem]",
-                    isActive && "font-medium text-[var(--dashboard-brand)]",
-                    isComplete && "font-medium text-[var(--dashboard-success)]",
-                    !isActive &&
-                      !isComplete &&
-                      "text-[var(--dashboard-text-soft)]",
-                  )}
-                >
-                  {item.label}
-                </span>
-              </div>
-              {index < quizSteps.length - 1 ? (
-                <ChevronRight className="h-5 w-5 text-[var(--dashboard-text-faint)]" />
-              ) : null}
-            </div>
-          );
-        })}
-      </div>
+      <QuizBuilderStepper currentStepIndex={currentStepIndex} />
 
       <AnimatePresence mode="wait" initial={false}>
         <motion.div
@@ -831,953 +949,790 @@ export function QuizBuilderWorkspace({
           transition={{ duration: 0.28, ease: "easeOut" }}
         >
           {workspaceStage === "input" ? (
-            <DashboardSurface asChild radius="xl" padding="lg">
-              <section className="space-y-6">
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <h2 className="text-[1.45rem] font-semibold text-[var(--dashboard-text-strong)]">
-                      Input source
-                    </h2>
-                    <p className="mt-2 text-[15px] leading-7 text-[var(--dashboard-text-soft)]">
-                      {copy.inputDescription}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="grid gap-3 md:grid-cols-2">
-                  <button
-                    type="button"
-                    onClick={() => setActiveInput("upload")}
-                    className={cn(
-                      dashboardInsetBlockClassName,
-                      "text-left transition",
-                      activeInput === "upload" &&
-                        "border-[var(--dashboard-brand)] bg-[var(--dashboard-brand-soft-alt)]",
-                    )}
-                  >
-                    <div className="flex items-center gap-3">
-                      <Upload className="h-5 w-5 text-[var(--dashboard-brand)]" />
-                      <span className="text-sm font-semibold text-[var(--dashboard-text-strong)]">
-                        Upload PDF
-                      </span>
-                    </div>
-                    <p className="mt-3 text-sm leading-6 text-[var(--dashboard-text-soft)]">
-                      Best for lecture slides, reading packets, or lab handouts.
-                    </p>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setActiveInput("paste")}
-                    className={cn(
-                      dashboardInsetBlockClassName,
-                      "text-left transition",
-                      activeInput === "paste" &&
-                        "border-[var(--dashboard-brand)] bg-[var(--dashboard-brand-soft-alt)]",
-                    )}
-                  >
-                    <div className="flex items-center gap-3">
-                      <FileText className="h-5 w-5 text-[var(--dashboard-brand)]" />
-                      <span className="text-sm font-semibold text-[var(--dashboard-text-strong)]">
-                        Paste lecture text
-                      </span>
-                    </div>
-                    <p className="mt-3 text-sm leading-6 text-[var(--dashboard-text-soft)]">
-                      Useful for notes, transcripts, summaries, or copied
-                      reading passages.
-                    </p>
-                  </button>
-                </div>
-
-                {activeInput === "upload" ? (
-                  <div
-                    className={cn(
-                      "rounded-[28px] border border-dashed px-6 py-10 text-center transition",
-                      fileError
-                        ? "border-[var(--dashboard-danger)] bg-[var(--dashboard-danger-soft)]/50"
-                        : "border-[var(--dashboard-border)] bg-[var(--dashboard-surface-muted)]",
-                    )}
-                  >
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      accept="application/pdf,.pdf"
-                      className="hidden"
-                      onChange={handleFileChange}
-                    />
-                    <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-white text-[var(--dashboard-brand)] shadow-sm">
-                      <Upload className="h-6 w-6" />
-                    </div>
-                    <h3 className="mt-5 text-[1.2rem] font-semibold text-[var(--dashboard-text-strong)]">
-                      Drag and drop a PDF here
-                    </h3>
-                    <p className="mt-2 text-sm text-[var(--dashboard-text-soft)]">
-                      Or choose a file manually. Accepted format: PDF up to 50
-                      MB.
-                    </p>
-                    <div className="mt-6 flex justify-center gap-3">
-                      <DashboardButton
-                        type="button"
-                        variant="secondary"
-                        size="lg"
-                        onClick={handleOpenFilePicker}
-                      >
-                        Choose PDF
-                      </DashboardButton>
-                      <DashboardButton
-                        type="button"
-                        size="lg"
-                        onClick={handleStartParsing}
-                        disabled={!canParse}
-                      >
-                        <ScanSearch className="h-4.5 w-4.5" />
-                        Continue
-                      </DashboardButton>
-                    </div>
-                    {selectedFile ? (
-                      <p className="mt-4 text-sm font-medium text-[var(--dashboard-text-strong)]">
-                        Selected: {selectedFile.name}
-                      </p>
-                    ) : null}
-                    {fileError ? (
-                      <p className="mt-4 text-sm font-medium text-[var(--dashboard-danger)]">
-                        {fileError}
-                      </p>
-                    ) : null}
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    <textarea
-                      value={pastedText}
-                      onChange={(event) => {
-                        setPastedText(event.target.value);
-                        setParseStatus("idle");
-                        setParsedSource(null);
-                      }}
-                      placeholder="Paste your lecture notes, article excerpt, or teaching summary here."
-                      className={dashboardTextareaVariants({ size: "lg" })}
-                    />
-                    <div className="flex flex-wrap items-center justify-between gap-3">
-                      <p className="text-sm text-[var(--dashboard-text-soft)]">
-                        Minimum 180 characters. Your original text stays
-                        preserved if generation fails.
-                      </p>
-                      <div className="flex gap-3">
-                        <DashboardButton
-                          type="button"
-                          variant="secondary"
-                          size="lg"
-                          onClick={() => setPastedText("")}
-                        >
-                          Clear
-                        </DashboardButton>
-                        <DashboardButton
-                          type="button"
-                          size="lg"
-                          onClick={handleStartParsing}
-                          disabled={!canParse}
-                        >
-                          <ScanSearch className="h-4.5 w-4.5" />
-                          Continue
-                        </DashboardButton>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {parseStatus === "processing" ? (
-                  <div className="rounded-[24px] border border-[var(--dashboard-border-soft)] bg-[var(--dashboard-surface-muted)] px-5 py-5">
-                    <div className="flex items-center gap-3 text-[var(--dashboard-text-strong)]">
-                      <LoaderCircle className="h-5 w-5 animate-spin text-[var(--dashboard-brand)]" />
-                      <span className="font-semibold">
-                        Parsing and chunking the source
-                      </span>
-                    </div>
-                    <p className="mt-3 text-sm leading-6 text-[var(--dashboard-text-soft)]">
-                      Bilgenly is extracting the most useful parts of the
-                      lecture so the next step can open with a clean preview and
-                      generation setup.
-                    </p>
-                  </div>
-                ) : null}
-
-                {parseStatus === "error" ? (
-                  <div className="rounded-[24px] border border-[var(--dashboard-danger)] bg-[var(--dashboard-danger-soft)]/50 px-5 py-5">
-                    <div className="flex items-center gap-3 text-[var(--dashboard-danger)]">
-                      <XCircle className="h-5 w-5" />
-                      <span className="font-semibold">
-                        We could not parse enough content
-                      </span>
-                    </div>
-                    <p className="mt-3 text-sm leading-6 text-[var(--dashboard-text-soft)]">
-                      Add more lecture text or upload a fuller PDF. Nothing was
-                      lost, and you can retry immediately.
-                    </p>
-                  </div>
-                ) : null}
-              </section>
-            </DashboardSurface>
+            <QuizBuilderInputStage
+              activeInput={activeInput}
+              canParse={canParse}
+              copy={copy}
+              fileError={fileError}
+              fileInputRef={fileInputRef}
+              handleFileChange={handleFileChange}
+              handleOpenFilePicker={handleOpenFilePicker}
+              handleStartParsing={handleStartParsing}
+              parseStatus={parseStatus}
+              pastedText={pastedText}
+              selectedFile={selectedFile}
+              setActiveInput={setActiveInput}
+              setParseStatus={setParseStatus}
+              setParsedSource={setParsedSource}
+              setPastedText={setPastedText}
+            />
           ) : null}
 
           {workspaceStage === "configure" ? (
-            <DashboardSurface asChild radius="xl" padding="lg">
-              <section className="space-y-6">
-                <div className="flex flex-wrap items-start justify-between gap-4">
-                  <div>
-                    <h2 className="text-[1.45rem] font-semibold text-[var(--dashboard-text-strong)]">
-                      Review source and configure quiz
-                    </h2>
-                    <p className="mt-2 text-[15px] leading-7 text-[var(--dashboard-text-soft)]">
-                      {copy.configureDescription}
-                    </p>
-                  </div>
-                  <DashboardButton
-                    type="button"
-                    variant="ghost"
-                    size="lg"
-                    onClick={handleReplaceSource}
-                  >
-                    Replace source
-                  </DashboardButton>
-                </div>
-
-                <div className="grid gap-4 md:grid-cols-3">
-                  <div className={dashboardInsetBlockClassName}>
-                    <p className="text-sm text-[var(--dashboard-text-soft)]">
-                      Source
-                    </p>
-                    <p className="mt-2 font-semibold text-[var(--dashboard-text-strong)]">
-                      {parsedSource?.label}
-                    </p>
-                  </div>
-                  <div className={dashboardInsetBlockClassName}>
-                    <p className="text-sm text-[var(--dashboard-text-soft)]">
-                      Estimated length
-                    </p>
-                    <p className="mt-2 font-semibold text-[var(--dashboard-text-strong)]">
-                      {parsedSource?.lengthLabel}
-                    </p>
-                  </div>
-                  <div className={dashboardInsetBlockClassName}>
-                    <p className="text-sm text-[var(--dashboard-text-soft)]">
-                      Coverage
-                    </p>
-                    <p className="mt-2 font-semibold text-[var(--dashboard-text-strong)]">
-                      {parsedSource?.pageEstimate}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="grid lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
-                  <div className="col-span-1 lg:col-span-2 w-full rounded-[24px] border border-[var(--dashboard-border-soft)] bg-[var(--dashboard-surface-muted)] px-5 py-5">
-                    {" "}
-                    <div className="flex items-center justify-between gap-4">
-                      <h3 className="font-semibold text-[var(--dashboard-text-strong)]">
-                        Extracted text preview
-                      </h3>
-                      <span className="text-sm text-[var(--dashboard-text-soft)]">
-                        {parsedSource?.characterCount} characters
-                      </span>
-                    </div>
-                    <p className="mt-4 text-[15px] leading-7 text-[var(--dashboard-text-soft)]">
-                      {parsedSource?.extractedText}
-                    </p>
-                  </div>
-
-                  <div className="space-y-4">
-                    {parsedSource?.warning ? (
-                      <div className="rounded-[24px] border border-[var(--dashboard-warning)] bg-[var(--dashboard-warning-soft)]/60 px-5 py-5">
-                        <div className="flex items-center gap-3 text-[var(--dashboard-warning)]">
-                          <AlertCircle className="h-5 w-5" />
-                          <span className="font-semibold">
-                            Some content may need a quick review
-                          </span>
-                        </div>
-                        <p className="mt-3 text-sm leading-6 text-[var(--dashboard-text-soft)]">
-                          {parsedSource.warning}
-                        </p>
-                      </div>
-                    ) : null}
-                  </div>
-                </div>
-
-                <div className="grid gap-4 md:grid-cols-2">
-                  <label className="space-y-2">
-                    <span className="text-sm font-semibold text-[var(--dashboard-text-strong)]">
-                      {mode === "student" ? "Quiz title (optional)" : "Quiz title"}
-                    </span>
-                    <input
-                      value={quizTitle}
-                      onChange={(event) => setQuizTitle(event.target.value)}
-                      placeholder={
-                        mode === "student"
-                          ? "Auto-generate from my study topic"
-                          : "Cell Structure Review Quiz"
-                      }
-                      className={dashboardInputVariants({ size: "lg" })}
-                    />
-                  </label>
-                  <label className="space-y-2">
-                    <span className="text-sm font-semibold text-[var(--dashboard-text-strong)]">
-                      {copy.contextLabel}
-                    </span>
-                    <select
-                      value={contextValue}
-                      onChange={(event) => setContextValue(event.target.value)}
-                      className={cn(
-                        dashboardSelectVariants({ size: "md" }),
-                        "w-full",
-                      )}
-                    >
-                      {copy.contextOptions.map((item) => (
-                        <option key={item}>{item}</option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="space-y-2">
-                    <span className="text-sm font-semibold text-[var(--dashboard-text-strong)]">
-                      Number of questions
-                    </span>
-                    <select
-                      value={questionCount}
-                      onChange={(event) =>
-                        setQuestionCount(Number(event.target.value))
-                      }
-                      className={cn(
-                        dashboardSelectVariants({ size: "md" }),
-                        "w-full",
-                      )}
-                    >
-                      {[5, 8, 10, 12, 15].map((value) => (
-                        <option key={value} value={value}>
-                          {value} questions
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="space-y-2">
-                    <span className="text-sm font-semibold text-[var(--dashboard-text-strong)]">
-                      Topic focus
-                    </span>
-                    <input
-                      value={focus}
-                      onChange={(event) => setFocus(event.target.value)}
-                      placeholder="Protein structure"
-                      className={dashboardInputVariants({ size: "md" })}
-                    />
-                  </label>
-                  <label className="space-y-2">
-                    <span className="text-sm font-semibold text-[var(--dashboard-text-strong)]">
-                      Language
-                    </span>
-                    <select
-                      value={language}
-                      onChange={(event) => setLanguage(event.target.value)}
-                      className={cn(
-                        dashboardSelectVariants({ size: "md" }),
-                        "w-full",
-                      )}
-                    >
-                      <option>English</option>
-                      <option>Kazakh</option>
-                      <option>Russian</option>
-                    </select>
-                  </label>
-                </div>
-
-                {mode === "teacher" ? (
-                  <>
-                    <div className="space-y-3">
-                      <p className="text-sm font-semibold text-[var(--dashboard-text-strong)]">
-                        Question type mix
-                      </p>
-                      <div className="flex flex-wrap gap-3">
-                        {questionTypeOptions.map((type) => {
-                          const checked = questionTypes.includes(type);
-                          return (
-                            <button
-                              key={type}
-                              type="button"
-                              onClick={() => toggleQuestionType(type)}
-                              className={cn(
-                                "rounded-full border px-4 py-2 text-sm font-medium transition",
-                                checked
-                                  ? "border-[var(--dashboard-brand)] bg-[var(--dashboard-brand-soft-alt)] text-[var(--dashboard-brand)]"
-                                  : "border-[var(--dashboard-border)] text-[var(--dashboard-text-soft)] hover:bg-[var(--dashboard-surface-muted)]",
-                              )}
-                            >
-                              {type}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-
-                    <label className="space-y-2">
-                      <span className="text-sm font-semibold text-[var(--dashboard-text-strong)]">
-                        Additional instructions
-                      </span>
-                      <textarea
-                        value={instructions}
-                        onChange={(event) => setInstructions(event.target.value)}
-                        className={dashboardTextareaVariants({ size: "md" })}
-                      />
-                    </label>
-                  </>
-                ) : null}
-
-                <div className="flex flex-wrap items-center gap-3">
-                  <DashboardButton
-                    type="button"
-                    size="xl"
-                    onClick={handleGenerateQuiz}
-                    disabled={!canGenerate}
-                    className="min-w-[220px]"
-                  >
-                    {mode === "student" ? "Generate Practice Quiz" : "Generate Quiz"}
-                  </DashboardButton>
-                  <p className="text-sm text-[var(--dashboard-text-soft)]">
-                    {mode === "student"
-                      ? "You will be able to start practicing right away after generation."
-                      : "The draft will stay editable before export or test run."}
-                  </p>
-                </div>
-              </section>
-            </DashboardSurface>
+            <QuizBuilderConfigureStage
+              canGenerate={canGenerate}
+              contextValue={contextValue}
+              copy={copy}
+              focus={focus}
+              handleGenerateQuiz={handleGenerateQuiz}
+              handleReplaceSource={handleReplaceSource}
+              instructions={instructions}
+              mode={mode}
+              parsedSource={parsedSource}
+              questionCount={questionCount}
+              questionTypes={questionTypes}
+              quizTitle={quizTitle}
+              setContextValue={setContextValue}
+              setFocus={setFocus}
+              setInstructions={setInstructions}
+              setQuestionCount={setQuestionCount}
+              setQuizTitle={setQuizTitle}
+              toggleQuestionType={toggleQuestionType}
+            />
           ) : null}
 
           {workspaceStage === "generate" ? (
-            <DashboardSurface
-              asChild
-              radius="xl"
-              padding="lg"
-              variant={generationState === "running" ? "accent" : "card"}
-            >
-              <section className="space-y-5">
-                {generationState === "running" ? (
-                  <>
-                    <div className="flex flex-wrap items-start justify-between gap-4">
-                      <div>
-                        <h2 className="text-[1.45rem] font-semibold text-[var(--dashboard-text-strong)]">
-                          Generating quiz draft
-                        </h2>
-                        <p className="mt-2 text-[15px] leading-7 text-[var(--dashboard-text-soft)]">
-                          Bilgenly is parsing, generating, and assembling the
-                          draft. This stage replaces configuration until the
-                          draft is ready.
-                        </p>
-                      </div>
-                      <DashboardBadge tone="brand" size="md">
-                        {elapsedSeconds}s elapsed
-                      </DashboardBadge>
-                    </div>
-
-                    <div className="space-y-4 rounded-[24px] bg-white px-5 py-5 shadow-sm">
-                      <div className="h-3 overflow-hidden rounded-full bg-[var(--dashboard-surface-muted)]">
-                        <div
-                          className="h-full rounded-full bg-[var(--dashboard-brand)] transition-all"
-                          style={{
-                            width: `${Math.min(96, 24 + elapsedSeconds * 18)}%`,
-                          }}
-                        />
-                      </div>
-
-                      <div className="grid gap-3 md:grid-cols-3">
-                        {[
-                          {
-                            label: "Parsing source",
-                            ready: elapsedSeconds >= 1,
-                          },
-                          {
-                            label: "Generating questions",
-                            ready: elapsedSeconds >= 2,
-                          },
-                          {
-                            label: "Assembling draft",
-                            ready: elapsedSeconds >= 3,
-                          },
-                        ].map((step) => (
-                          <div
-                            key={step.label}
-                            className={cn(
-                              "rounded-[18px] border px-4 py-4",
-                              step.ready
-                                ? "border-[var(--dashboard-brand)] bg-[var(--dashboard-brand-soft-alt)]"
-                                : "border-[var(--dashboard-border-soft)] bg-[var(--dashboard-surface-muted)]",
-                            )}
-                          >
-                            <div className="flex items-center gap-2">
-                              {step.ready ? (
-                                <CheckCircle2 className="h-4.5 w-4.5 text-[var(--dashboard-brand)]" />
-                              ) : (
-                                <LoaderCircle className="h-4.5 w-4.5 animate-spin text-[var(--dashboard-text-faint)]" />
-                              )}
-                              <span className="text-sm font-semibold text-[var(--dashboard-text-strong)]">
-                                {step.label}
-                              </span>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-
-                      <div className="flex flex-wrap items-center justify-between gap-3">
-                        <p className="text-sm leading-6 text-[var(--dashboard-text-soft)]">
-                          The AI is assistive here. You will still review
-                          wording, correctness, and student readability before
-                          the quiz is used.
-                        </p>
-                        <DashboardButton
-                          type="button"
-                          variant="ghost"
-                          size="lg"
-                          onClick={handleCancelGeneration}
-                        >
-                          Cancel
-                        </DashboardButton>
-                      </div>
-                    </div>
-                  </>
-                ) : null}
-
-                {generationState === "cancelled" ? (
-                  <div className="rounded-[24px] border border-[var(--dashboard-warning)] bg-[var(--dashboard-warning-soft)]/60 px-5 py-5">
-                    <div className="flex items-center gap-3 text-[var(--dashboard-warning)]">
-                      <AlertCircle className="h-5 w-5" />
-                      <h2 className="text-lg font-semibold">
-                        Generation paused
-                      </h2>
-                    </div>
-                    <p className="mt-3 text-sm leading-6 text-[var(--dashboard-text-soft)]">
-                      Your source and settings are still in place. Restart
-                      generation whenever you are ready.
-                    </p>
-                    <div className="mt-5 flex gap-3">
-                      <DashboardButton
-                        type="button"
-                        size="lg"
-                        onClick={handleRetryGeneration}
-                      >
-                        <RefreshCw className="h-4.5 w-4.5" />
-                        Resume generation
-                      </DashboardButton>
-                      <DashboardButton
-                        type="button"
-                        variant="secondary"
-                        size="lg"
-                        onClick={() => setGenerationState("idle")}
-                      >
-                        Back to settings
-                      </DashboardButton>
-                    </div>
-                  </div>
-                ) : null}
-
-                {generationState === "failed" ? (
-                  <div className="rounded-[24px] border border-[var(--dashboard-danger)] bg-[var(--dashboard-danger-soft)]/50 px-5 py-5">
-                    <div className="flex items-center gap-3 text-[var(--dashboard-danger)]">
-                      <XCircle className="h-5 w-5" />
-                      <h2 className="text-lg font-semibold">
-                        Quiz generation needs another attempt
-                      </h2>
-                    </div>
-                    <p className="mt-3 text-sm leading-6 text-[var(--dashboard-text-soft)]">
-                      {generationError}
-                    </p>
-                    <p className="mt-2 text-sm leading-6 text-[var(--dashboard-text-soft)]">
-                      No data was lost. Try reducing the number of questions or
-                      replacing weak source sections first.
-                    </p>
-                    <div className="mt-5 flex gap-3">
-                      <DashboardButton
-                        type="button"
-                        size="lg"
-                        onClick={handleRetryGeneration}
-                      >
-                        <RefreshCw className="h-4.5 w-4.5" />
-                        Retry
-                      </DashboardButton>
-                      <DashboardButton
-                        type="button"
-                        variant="secondary"
-                        size="lg"
-                        onClick={() => setGenerationState("idle")}
-                      >
-                        Back to settings
-                      </DashboardButton>
-                    </div>
-                  </div>
-                ) : null}
-
-                {generationState === "success" && questions.length > 0 ? (
-                  <>
-                    <div className="flex flex-wrap items-start justify-between gap-4">
-                      <div>
-                        <div className="flex items-center gap-3">
-                          <CheckCircle2 className="h-6 w-6 text-[var(--dashboard-success)]" />
-                          <h2 className="text-[1.45rem] font-semibold text-[var(--dashboard-text-strong)]">
-                            Quiz draft ready for review
-                          </h2>
-                        </div>
-                        <p className="mt-3 text-[15px] leading-7 text-[var(--dashboard-text-soft)]">
-                          {copy.successDescription}
-                        </p>
-                      </div>
-                      <DashboardBadge
-                        tone={
-                          validationIssues.length > 0 ? "warning" : "success"
-                        }
-                        size="md"
-                      >
-                        {validationIssues.length > 0
-                          ? "Needs review"
-                          : mode === "student"
-                            ? "Practice ready"
-                            : "Ready to save"}
-                      </DashboardBadge>
-                    </div>
-
-                    <div className="grid gap-4 md:grid-cols-4">
-                      <div className={dashboardInsetBlockClassName}>
-                        <p className="text-sm text-[var(--dashboard-text-soft)]">
-                          Questions generated
-                        </p>
-                        <p className="mt-2 text-2xl font-semibold text-[var(--dashboard-text-strong)]">
-                          {questions.length}
-                        </p>
-                      </div>
-                      <div className={dashboardInsetBlockClassName}>
-                        <p className="text-sm text-[var(--dashboard-text-soft)]">
-                          {mode === "student" ? copy.contextLabel : "Source summary"}
-                        </p>
-                        <p className="mt-2 font-semibold text-[var(--dashboard-text-strong)]">
-                          {mode === "student" ? contextValue : parsedSource?.label}
-                        </p>
-                      </div>
-                      <div className={dashboardInsetBlockClassName}>
-                        <p className="text-sm text-[var(--dashboard-text-soft)]">
-                          Generation time
-                        </p>
-                        <p className="mt-2 font-semibold text-[var(--dashboard-text-strong)]">
-                          {generationDurationLabel}
-                        </p>
-                      </div>
-                      <div className={dashboardInsetBlockClassName}>
-                        <p className="text-sm text-[var(--dashboard-text-soft)]">
-                          Language
-                        </p>
-                        <p className="mt-2 font-semibold text-[var(--dashboard-text-strong)]">
-                          {language}
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="flex flex-wrap gap-3">
-                      {mode === "student" ? (
-                        <DashboardButton
-                          type="button"
-                          size="lg"
-                          onClick={() => {
-                            setHasEnteredReview(true);
-                          }}
-                        >
-                          <PlayCircle className="h-4.5 w-4.5" />
-                          Start Practice
-                        </DashboardButton>
-                      ) : null}
-                      <DashboardButton
-                        type="button"
-                        size="lg"
-                        variant={mode === "student" ? "secondary" : "primary"}
-                        onClick={() => {
-                          setHasEnteredReview(true);
-                        }}
-                      >
-                        <PencilLine className="h-4.5 w-4.5" />
-                        {mode === "student" ? "Review Practice Set" : "Review Questions"}
-                      </DashboardButton>
-                      <DashboardButton
-                        type="button"
-                        variant="secondary"
-                        size="lg"
-                        onClick={handleGenerateQuiz}
-                      >
-                        <RefreshCw className="h-4.5 w-4.5" />
-                        Regenerate
-                      </DashboardButton>
-                    </div>
-                  </>
-                ) : null}
-              </section>
-            </DashboardSurface>
+            <QuizBuilderGenerateStage
+              contextValue={contextValue}
+              copy={copy}
+              elapsedSeconds={elapsedSeconds}
+              generationDurationLabel={generationDurationLabel}
+              generationError={generationError}
+              generationState={generationState}
+              handleCancelGeneration={handleCancelGeneration}
+              handleGenerateQuiz={handleGenerateQuiz}
+              handleOpenQuizFlow={handleOpenQuizFlow}
+              handleRetryGeneration={handleRetryGeneration}
+              mode={mode}
+              parsedSource={parsedSource}
+              questionsCount={questions.length}
+              setGenerationState={setGenerationState}
+              setHasEnteredReview={setHasEnteredReview}
+              validationIssues={validationIssues}
+            />
           ) : null}
 
           {workspaceStage === "review" ? (
             <div className="space-y-6">
-              <DashboardSurface asChild radius="xl" padding="lg">
-                <section className="space-y-6">
-                  <div className="flex flex-wrap items-start justify-between gap-4">
-                    <div>
-                      <h2 className="text-[1.45rem] font-semibold text-[var(--dashboard-text-strong)]">
-                        {mode === "student" ? "Practice-ready review" : "Question review"}
-                      </h2>
-                      <p className="mt-2 text-[15px] leading-7 text-[var(--dashboard-text-soft)]">
-                        {mode === "student"
-                          ? "Scan the generated practice set, adjust anything you want, then start a personal self-test."
-                          : "Review, edit, reorder, or regenerate individual questions without leaving the page."}
-                      </p>
-                    </div>
-                    <div className="flex flex-wrap gap-3">
-                      <DashboardButton
-                        type="button"
-                        variant="secondary"
-                        size="lg"
-                        onClick={handleAddQuestion}
-                      >
-                        <Plus className="h-4.5 w-4.5" />
-                        Add Question
-                      </DashboardButton>
-                      {mode === "student" ? (
+              <DashboardSurface radius="xl" padding="none" className="overflow-hidden">
+                <section className="grid xl:grid-cols-[280px_minmax(0,1fr)]">
+                  <input
+                    ref={questionImageInputRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={handleQuestionImageChange}
+                  />
+                  <div className="border-b border-[var(--dashboard-border-soft)] bg-white px-5 py-4 xl:col-span-2 xl:px-6">
+                    <div className="flex flex-wrap items-center justify-between gap-4">
+                      <div className="flex min-w-0 items-center gap-3">
+                        <DashboardButton
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => {
+                            setHasEnteredReview(false);
+                          }}
+                        >
+                          <ChevronRight className="h-4.5 w-4.5 rotate-180" />
+                        </DashboardButton>
+                        <h2 className="truncate text-[1.35rem] font-semibold text-[var(--dashboard-text-strong)]">
+                          {resolvedQuizTitle}
+                        </h2>
+                      </div>
+
+                      <div className="flex flex-wrap items-center justify-end gap-2">
+                        <DashboardButton
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="px-0 text-[var(--dashboard-text-soft)] hover:text-[var(--dashboard-text-strong)]"
+                          onClick={handleCancelCreation}
+                        >
+                          {editingQuiz ? "Cancel Editing" : "Cancel Creation"}
+                        </DashboardButton>
+                        <DashboardButton
+                          type="button"
+                          variant="secondary"
+                          size="icon"
+                          className="shrink-0"
+                          onClick={() => handleOpenQuizFlow("draft")}
+                          title="Preview quiz"
+                          aria-label="Preview quiz"
+                        >
+                          <PlayCircle className="h-4.5 w-4.5" />
+                        </DashboardButton>
+                        <DashboardButton
+                          type="button"
+                          variant="secondary"
+                          size="icon"
+                          className="shrink-0"
+                          onClick={() => handleSaveQuiz("draft")}
+                          title={copy.saveLabel}
+                          aria-label={copy.saveLabel}
+                        >
+                          <Save className="h-4.5 w-4.5" />
+                        </DashboardButton>
                         <DashboardButton
                           type="button"
                           size="lg"
-                          onClick={() => handleSaveQuiz("draft")}
+                          onClick={() =>
+                            handleSaveQuiz(
+                              publishVisibility === "public"
+                                ? "published-public"
+                                : "published-private",
+                            )
+                          }
                         >
-                          <PlayCircle className="h-4.5 w-4.5" />
-                          Start Practice
+                          {copy.publishLabel}
                         </DashboardButton>
-                      ) : null}
-                      <DashboardButton
-                        type="button"
-                        variant="ghost"
-                        size="lg"
-                        onClick={() => {
-                          setHasEnteredReview(false);
-                        }}
-                      >
-                        Back to result
-                      </DashboardButton>
-                      <DashboardButton
-                        type="button"
-                        variant="ghost"
-                        size="lg"
-                        onClick={handleCancelCreation}
-                      >
-                        {editingQuiz ? "Cancel Editing" : "Cancel Creation"}
-                      </DashboardButton>
+                      </div>
                     </div>
                   </div>
-                  <div className="grid gap-5 xl:grid-cols-[minmax(0,0.94fr)_minmax(0,1.06fr)]">
-                      <div className="space-y-4">
-                        {questions.map((question, index) => (
-                          <button
-                            key={question.id}
-                            type="button"
-                            onClick={() => setSelectedQuestionId(question.id)}
-                            className={cn(
-                              "w-full rounded-[24px] border px-5 py-5 text-left transition",
-                              selectedQuestion?.id === question.id
-                                ? "border-[var(--dashboard-brand)] bg-[var(--dashboard-brand-soft-alt)]"
-                                : "border-[var(--dashboard-border-soft)] bg-white hover:bg-[var(--dashboard-surface-muted)]",
-                            )}
-                          >
-                            <div className="flex flex-wrap items-start justify-between gap-3">
-                              <div>
-                                <div className="flex items-center gap-3">
-                                  <span className="text-sm font-semibold text-[var(--dashboard-text-soft)]">
-                                    Question {index + 1}
-                                  </span>
-                                  <DashboardBadge
-                                    tone={getQuestionStatusTone(
-                                      question.status,
-                                    )}
-                                  >
-                                    {question.status}
-                                  </DashboardBadge>
-                                </div>
-                                <h3 className="mt-3 text-[1rem] font-semibold leading-7 text-[var(--dashboard-text-strong)]">
-                                  {question.text}
-                                </h3>
-                                <div className="mt-3 flex flex-wrap gap-2 text-sm text-[var(--dashboard-text-soft)]">
-                                  {question.options.map(
-                                    (option, optionIndex) => (
-                                      <span
-                                        key={`${question.id}-${optionIndex}`}
-                                        className={cn(
-                                          "rounded-full px-3 py-1",
-                                          optionIndex === question.correctIndex
-                                            ? "bg-[var(--dashboard-success-soft)] text-[var(--dashboard-success)]"
-                                            : "bg-[var(--dashboard-surface-muted)]",
-                                        )}
-                                      >
-                                        {option}
-                                      </span>
-                                    ),
-                                  )}
-                                </div>
-                              </div>
 
-                              <div className="flex flex-wrap gap-2">
-                                <DashboardButton
-                                  type="button"
-                                  variant="ghost"
-                                  size="iconSm"
-                                  onClick={(event) => {
-                                    event.stopPropagation();
-                                    handleMoveQuestion(question.id, "up");
-                                  }}
-                                >
-                                  <ArrowUp className="h-4 w-4" />
-                                </DashboardButton>
-                                <DashboardButton
-                                  type="button"
-                                  variant="ghost"
-                                  size="iconSm"
-                                  onClick={(event) => {
-                                    event.stopPropagation();
-                                    handleMoveQuestion(question.id, "down");
-                                  }}
-                                >
-                                  <ArrowDown className="h-4 w-4" />
-                                </DashboardButton>
-                                <DashboardButton
-                                  type="button"
-                                  variant="ghost"
-                                  size="iconSm"
-                                  onClick={(event) => {
-                                    event.stopPropagation();
-                                    handleDuplicateQuestion(question.id);
-                                  }}
-                                >
-                                  <Plus className="h-4 w-4" />
-                                </DashboardButton>
-                                <DashboardButton
-                                  type="button"
-                                  variant="ghost"
-                                  size="iconSm"
-                                  onClick={(event) => {
-                                    event.stopPropagation();
-                                    handleDeleteQuestion(question.id);
-                                  }}
-                                >
-                                  <Trash2 className="h-4 w-4" />
-                                </DashboardButton>
-                              </div>
-                            </div>
-                          </button>
-                        ))}
+                  <aside className="border-b border-r border-[var(--dashboard-border-soft)] bg-[#fafafa] px-4 py-4 xl:border-b-0">
+                    <div className="space-y-4 xl:sticky xl:top-6">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--dashboard-text-faint)]">
+                            Questions ({questions.length})
+                          </p>
+                          <p className="hidden mt-1 text-sm text-[var(--dashboard-text-soft)]">
+                            {reviewedQuestionCount} edited · {validationIssues.length} issues
+                          </p>
+                          <p className="mt-1 text-sm text-[var(--dashboard-text-soft)]">
+                            {reviewedQuestionCount} edited | {validationIssues.length} issues
+                          </p>
+                        </div>
+                        <DashboardButton
+                          type="button"
+                          size="iconSm"
+                          variant="secondary"
+                          className="rounded-full border border-[var(--dashboard-border-soft)] bg-white"
+                          onClick={handleAddQuestion}
+                        >
+                          <Plus className="h-4 w-4" />
+                        </DashboardButton>
                       </div>
 
-                      {selectedQuestion ? (
-                        <div className="rounded-[28px] border border-[var(--dashboard-border-soft)] bg-white px-6 py-6">
-                          <div className="flex flex-wrap items-center justify-between gap-3">
-                            <div>
-                              <p className="text-sm text-[var(--dashboard-text-soft)]">
-                                Focused editor
-                              </p>
-                              <h3 className="mt-1 text-[1.15rem] font-semibold text-[var(--dashboard-text-strong)]">
-                                Edit question
-                              </h3>
-                            </div>
-                            <DashboardButton
-                              type="button"
-                              variant="secondary"
-                              size="sm"
-                              onClick={() =>
-                                handleRegenerateQuestion(selectedQuestion.id)
-                              }
-                            >
-                              <Wand2 className="h-4 w-4" />
-                              Regenerate
-                            </DashboardButton>
-                          </div>
+                      {filteredReviewQuestions.length ? (
+                        <div className="max-h-[640px] space-y-2 overflow-y-auto pr-1">
+                          {filteredReviewQuestions.map((question) => {
+                            const index = questions.findIndex(
+                              (candidate) => candidate.id === question.id,
+                            );
 
-                          <div className="mt-5 space-y-4">
-                            <label className="space-y-2">
-                              <span className="text-sm font-semibold text-[var(--dashboard-text-strong)]">
-                                Question text
+                            return (
+                              <button
+                                key={question.id}
+                                type="button"
+                                onClick={() => setSelectedQuestionId(question.id)}
+                                className={cn(
+                                  "relative w-full rounded-[18px] border px-4 py-4 text-left transition",
+                                  selectedQuestion?.id === question.id
+                                    ? "border-[#d6d8df] bg-white shadow-[0_14px_30px_rgba(18,32,58,0.08)]"
+                                    : "border-[#e5e7eb] bg-white hover:border-[#cfd4dc]",
+                                )}
+                              >
+                                <div className="flex items-start justify-between gap-3">
+                                  <div className="min-w-0">
+                                    <div className="flex items-center gap-2">
+                                      <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--dashboard-surface-muted)] text-xs font-semibold text-[var(--dashboard-text-soft)]">
+                                        {index + 1}
+                                      </span>
+                                      <span className="rounded-full border border-[var(--dashboard-border-soft)] bg-[var(--dashboard-surface-muted)] px-2 py-1 text-[11px] font-medium text-[var(--dashboard-text-soft)]">
+                                        Multiple choice
+                                      </span>
+                                    </div>
+                                    <h3 className="mt-3 line-clamp-2 text-sm font-semibold leading-6 text-[var(--dashboard-text-strong)]">
+                                      {question.text}
+                                    </h3>
+                                    <p className="hidden mt-2 text-xs text-[var(--dashboard-text-soft)]">
+                                      {question.options.length} choices · correct answer {question.correctIndex + 1}
+                                    </p>
+                                    <p className="mt-2 text-xs text-[var(--dashboard-text-soft)]">
+                                      {question.options.length} choices | {Math.max(1, Math.round(question.points))} pts
+                                    </p>
+                                  </div>
+
+                                  <div className="relative flex gap-1">
+                                    <DashboardButton
+                                      type="button"
+                                      variant="ghost"
+                                      size="iconSm"
+                                      className="hidden"
+                                      onClick={(event) => {
+                                        event.stopPropagation();
+                                        handleMoveQuestion(question.id, "up");
+                                      }}
+                                    >
+                                      <ArrowUp className="h-4 w-4" />
+                                    </DashboardButton>
+                                    <DashboardButton
+                                      type="button"
+                                      variant="ghost"
+                                      size="iconSm"
+                                      className="hidden"
+                                      onClick={(event) => {
+                                        event.stopPropagation();
+                                        handleMoveQuestion(question.id, "down");
+                                      }}
+                                    >
+                                      <ArrowDown className="h-4 w-4" />
+                                    </DashboardButton>
+                                    <DashboardButton
+                                      type="button"
+                                      variant="ghost"
+                                      size="iconSm"
+                                      className="hidden"
+                                      onClick={(event) => {
+                                        event.stopPropagation();
+                                        handleDuplicateQuestion(question.id);
+                                      }}
+                                    >
+                                      <Plus className="h-4 w-4" />
+                                    </DashboardButton>
+                                    <DashboardButton
+                                      type="button"
+                                      variant="ghost"
+                                      size="iconSm"
+                                      onClick={(event) => {
+                                        event.stopPropagation();
+                                        setOpenQuestionMenuId((current) =>
+                                          current === `rail-${question.id}`
+                                            ? null
+                                            : `rail-${question.id}`,
+                                        );
+                                      }}
+                                    >
+                                      <MoreHorizontal className="h-4 w-4" />
+                                    </DashboardButton>
+                                    {openQuestionMenuId === `rail-${question.id}` ? (
+                                      <div className="absolute right-0 top-9 z-20 w-40 rounded-[16px] border border-[var(--dashboard-border-soft)] bg-white p-2 shadow-[0_20px_40px_rgba(18,32,58,0.12)]">
+                                        {[
+                                          { label: "Move up", action: "up" as const },
+                                          { label: "Move down", action: "down" as const },
+                                          {
+                                            label: "Duplicate",
+                                            action: "duplicate" as const,
+                                          },
+                                          {
+                                            label: "Regenerate",
+                                            action: "regenerate" as const,
+                                          },
+                                          { label: "Delete", action: "delete" as const },
+                                        ].map((item) => (
+                                          <button
+                                            key={item.label}
+                                            type="button"
+                                            className="flex w-full rounded-[12px] px-3 py-2 text-left text-sm text-[var(--dashboard-text-strong)] transition hover:bg-[var(--dashboard-surface-muted)]"
+                                            onClick={(event) => {
+                                              event.stopPropagation();
+                                              handleQuestionMenuAction(
+                                                question.id,
+                                                item.action,
+                                              );
+                                            }}
+                                          >
+                                            {item.label}
+                                          </button>
+                                        ))}
+                                      </div>
+                                    ) : null}
+                                  </div>
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <div className="rounded-[18px] border border-dashed border-[var(--dashboard-border-soft)] bg-white px-4 py-6 text-sm leading-6 text-[var(--dashboard-text-soft)]">
+                          No questions match the current search.
+                        </div>
+                      )}
+
+                      <div className="rounded-[18px] border border-[var(--dashboard-border-soft)] bg-white px-4 py-4">
+                        <p className="text-sm font-semibold text-[var(--dashboard-text-strong)]">
+                          Result screen
+                        </p>
+                        <p className="mt-2 text-sm leading-6 text-[var(--dashboard-text-soft)]">
+                          {validationIssues.length === 0
+                            ? "The draft is in good shape and ready for preview, saving, or publishing."
+                            : "Fix the highlighted issues before you publish the quiz."}
+                        </p>
+                      </div>
+                    </div>
+                  </aside>
+
+                  <div className="space-y-5 bg-[#fcfcfd] px-5 py-5 lg:px-6">
+                    <div className="flex flex-wrap items-center gap-4 border-b border-[var(--dashboard-border-soft)] pb-5">
+                      <div className="min-w-[260px] flex-1">
+                        <DashboardSearchField
+                          value={reviewSearch}
+                          onChange={(event) =>
+                            setReviewSearch(
+                              clampText(
+                                event.target.value,
+                                QUIZ_BUILDER_LIMITS.search,
+                              ),
+                            )
+                          }
+                          placeholder="Search questions..."
+                          inputClassName="h-11 rounded-[14px] border-[var(--dashboard-border-soft)] bg-white"
+                        />
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <DashboardBadge tone="info" size="md">
+                          {questions.length} questions
+                        </DashboardBadge>
+                        <DashboardBadge tone="neutral" size="md">
+                          {parsedSource?.label ?? "AI-generated source"}
+                        </DashboardBadge>
+                        <DashboardBadge tone="neutral" size="md">
+                          {generationDurationLabel ?? "Fresh draft"}
+                        </DashboardBadge>
+                      </div>
+                    </div>
+
+                    {selectedQuestion ? (
+                      <div className="space-y-5">
+                        <div className="relative rounded-[30px] border border-[var(--dashboard-border-soft)] bg-white px-6 py-6 shadow-[0_18px_40px_rgba(18,32,58,0.04)]">
+                          <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[var(--dashboard-border-soft)] pb-5">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <label className="inline-flex items-center gap-2 rounded-[12px] border border-[var(--dashboard-border-soft)] bg-[var(--dashboard-surface-muted)] px-3 py-2 text-sm font-medium text-[var(--dashboard-text-strong)]">
+                                <CircleDot className="h-4 w-4" />
+                                <select
+                                  value={selectedQuestion.questionType}
+                                  onChange={(event) =>
+                                    handleQuestionChange(
+                                      selectedQuestion.id,
+                                      (question) =>
+                                        applyQuestionType(
+                                          question,
+                                          event.target.value as QuestionType,
+                                        ),
+                                    )
+                                  }
+                                  className="appearance-none bg-transparent pr-1 text-sm font-medium text-[var(--dashboard-text-strong)] outline-none"
+                                >
+                                  {questionTypeOptions.map((questionType) => (
+                                    <option key={questionType} value={questionType}>
+                                      {questionType}
+                                    </option>
+                                  ))}
+                                </select>
+                                <ChevronDown className="h-4 w-4 text-[var(--dashboard-text-faint)]" />
+                              </label>
+                            </div>
+
+                            <div className="relative flex flex-wrap items-center gap-2">
+                              <span className="text-sm font-medium text-[var(--dashboard-text-soft)]">
+                                Required
                               </span>
-                              <textarea
-                                value={selectedQuestion.text}
-                                onChange={(event) =>
+                              <button
+                                type="button"
+                                onClick={() =>
                                   handleQuestionChange(
                                     selectedQuestion.id,
                                     (question) => ({
                                       ...question,
-                                      text: event.target.value,
+                                      required: !question.required,
                                     }),
                                   )
                                 }
-                                className={dashboardTextareaVariants({
-                                  size: "md",
-                                })}
-                              />
-                            </label>
-
-                            <div className="space-y-3">
-                              <div className="flex items-center justify-between">
-                                <span className="text-sm font-semibold text-[var(--dashboard-text-strong)]">
-                                  Answer options
-                                </span>
-                                <span className="text-sm text-[var(--dashboard-text-soft)]">
-                                  Choose the correct answer
-                                </span>
-                              </div>
-
-                              {selectedQuestion.options.map(
-                                (option, optionIndex) => (
-                                  <div
-                                    key={`${selectedQuestion.id}-${optionIndex}`}
-                                    className="flex items-center gap-3"
-                                  >
-                                    <input
-                                      type="radio"
-                                      checked={
-                                        selectedQuestion.correctIndex ===
-                                        optionIndex
-                                      }
-                                      onChange={() =>
-                                        handleQuestionChange(
+                                className={cn(
+                                  "flex h-7 w-12 items-center rounded-full px-1 transition",
+                                  selectedQuestion.required
+                                    ? "bg-[#19b79f]"
+                                    : "bg-[var(--dashboard-surface-muted)]",
+                                )}
+                              >
+                                <div
+                                  className={cn(
+                                    "h-5 w-5 rounded-full bg-white shadow-sm transition",
+                                    selectedQuestion.required ? "ml-auto" : "",
+                                  )}
+                                />
+                              </button>
+                              <DashboardButton
+                                type="button"
+                                variant="ghost"
+                                size="iconSm"
+                                title="More question actions"
+                                onClick={() =>
+                                  setOpenQuestionMenuId((current) =>
+                                    current === `editor-${selectedQuestion.id}`
+                                      ? null
+                                      : `editor-${selectedQuestion.id}`,
+                                  )
+                                }
+                              >
+                                <MoreHorizontal className="h-4 w-4" />
+                              </DashboardButton>
+                              {openQuestionMenuId === `editor-${selectedQuestion.id}` ? (
+                                <div className="absolute right-0 top-10 z-20 w-44 rounded-[16px] border border-[var(--dashboard-border-soft)] bg-white p-2 shadow-[0_20px_40px_rgba(18,32,58,0.12)]">
+                                  {[
+                                    {
+                                      label: "Regenerate",
+                                      action: "regenerate" as const,
+                                    },
+                                    {
+                                      label: "Duplicate",
+                                      action: "duplicate" as const,
+                                    },
+                                    { label: "Move up", action: "up" as const },
+                                    { label: "Move down", action: "down" as const },
+                                    { label: "Delete", action: "delete" as const },
+                                  ].map((item) => (
+                                    <button
+                                      key={item.label}
+                                      type="button"
+                                      className="flex w-full rounded-[12px] px-3 py-2 text-left text-sm text-[var(--dashboard-text-strong)] transition hover:bg-[var(--dashboard-surface-muted)]"
+                                      onClick={() =>
+                                        handleQuestionMenuAction(
                                           selectedQuestion.id,
-                                          (question) => ({
-                                            ...question,
-                                            correctIndex: optionIndex,
-                                          }),
+                                          item.action,
                                         )
                                       }
-                                      className="h-4 w-4"
-                                    />
-                                    <input
-                                      value={option}
-                                      onChange={(event) =>
-                                        handleQuestionChange(
-                                          selectedQuestion.id,
-                                          (question) => ({
-                                            ...question,
-                                            options: question.options.map(
-                                              (candidate, candidateIndex) =>
-                                                candidateIndex === optionIndex
-                                                  ? event.target.value
-                                                  : candidate,
-                                            ),
-                                          }),
-                                        )
-                                      }
-                                      className={cn(
-                                        dashboardInputVariants({ size: "md" }),
-                                        "flex-1",
-                                      )}
-                                    />
-                                  </div>
-                                ),
-                              )}
+                                    >
+                                      {item.label}
+                                    </button>
+                                  ))}
+                                </div>
+                              ) : null}
+                            </div>
+                          </div>
+
+                          <div className="mt-6 flex flex-wrap items-start justify-between gap-3 xl:pl-6">
+                            <div>
+                              <p className="text-sm font-semibold text-[var(--dashboard-text-strong)]">
+                                Question {selectedQuestionIndex + 1}*
+                              </p>
                             </div>
 
-                            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--dashboard-border-soft)] pt-4">
-                              <div className="flex gap-2">
+                            <div className="flex flex-wrap gap-2">
+                              <DashboardButton
+                                type="button"
+                                variant="secondary"
+                                size="sm"
+                                onClick={() =>
+                                  handleRegenerateQuestion(selectedQuestion.id)
+                                }
+                              >
+                                <Wand2 className="h-4 w-4" />
+                                Regenerate
+                              </DashboardButton>
+                            </div>
+                          </div>
+
+                          <div className="mt-6 grid gap-5 xl:grid-cols-[minmax(0,1fr)_260px] xl:pl-6">
+                            <div className="space-y-4">
+                              <label className="space-y-2">
+                                <textarea
+                                  value={selectedQuestion.text}
+                                  onChange={(event) =>
+                                    handleQuestionChange(
+                                      selectedQuestion.id,
+                                      (question) => ({
+                                        ...question,
+                                        text: clampText(
+                                          event.target.value,
+                                          QUIZ_BUILDER_LIMITS.questionText,
+                                        ),
+                                      }),
+                                    )
+                                  }
+                                  maxLength={QUIZ_BUILDER_LIMITS.questionText}
+                                  className={cn(
+                                    dashboardTextareaVariants({ size: "md" }),
+                                    "min-h-[210px] rounded-[18px] border-[var(--dashboard-border-soft)] bg-[var(--dashboard-surface-muted)] text-[1.2rem] leading-8",
+                                  )}
+                                />
+                                <p className="text-xs text-[var(--dashboard-text-faint)]">
+                                  {selectedQuestion.text.length}/
+                                  {QUIZ_BUILDER_LIMITS.questionText}
+                                </p>
+                              </label>
+
+                              <div className="space-y-3">
+                                <div className="flex flex-wrap items-center gap-4 text-sm">
+                                  <span className="font-semibold text-[var(--dashboard-text-strong)]">
+                                    Choices*
+                                  </span>
+                                  <button
+                                    type="button"
+                                    className="inline-flex items-center gap-2 text-[var(--dashboard-text-soft)]"
+                                    onClick={() =>
+                                      handleQuestionChange(
+                                        selectedQuestion.id,
+                                        (question) =>
+                                          applyCorrectIndexes(
+                                            {
+                                              ...question,
+                                              selectionMode:
+                                                question.selectionMode === "multiple"
+                                                  ? "single"
+                                                  : "multiple",
+                                            },
+                                            question.selectionMode === "multiple"
+                                              ? [getQuestionCorrectIndexes(question)[0] ?? 0]
+                                              : Array.from(
+                                                  new Set([
+                                                    ...getQuestionCorrectIndexes(question),
+                                                    Math.min(1, question.options.length - 1),
+                                                  ]),
+                                                ),
+                                          ),
+                                      )
+                                    }
+                                  >
+                                    <span>Multiple answer</span>
+                                    <span
+                                      className={cn(
+                                        "flex h-6 w-10 items-center rounded-full px-1 transition",
+                                        selectedQuestion.selectionMode === "multiple"
+                                          ? "bg-[#19b79f]"
+                                          : "bg-[var(--dashboard-surface-muted)]",
+                                      )}
+                                    >
+                                      <span
+                                        className={cn(
+                                          "h-4 w-4 rounded-full bg-white shadow-sm transition",
+                                          selectedQuestion.selectionMode === "multiple"
+                                            ? "ml-auto"
+                                            : "",
+                                        )}
+                                      />
+                                    </span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="inline-flex items-center gap-2 text-[var(--dashboard-text-soft)]"
+                                    onClick={() => {
+                                      if (selectedQuestion.imageEnabled) {
+                                        handleQuestionChange(
+                                          selectedQuestion.id,
+                                          (question) => ({
+                                            ...question,
+                                            imageEnabled: false,
+                                            imageUrl: undefined,
+                                          }),
+                                        );
+                                        return;
+                                      }
+
+                                      handleQuestionChange(
+                                        selectedQuestion.id,
+                                        (question) => ({
+                                          ...question,
+                                          imageEnabled: true,
+                                        }),
+                                      );
+                                    }}
+                                  >
+                                    <span>Answer with image</span>
+                                    <span
+                                      className={cn(
+                                        "flex h-6 w-10 items-center rounded-full px-1 transition",
+                                        selectedQuestion.imageEnabled
+                                          ? "bg-[#19b79f]"
+                                          : "bg-[var(--dashboard-surface-muted)]",
+                                      )}
+                                    >
+                                      <span
+                                        className={cn(
+                                          "h-4 w-4 rounded-full bg-white shadow-sm transition",
+                                          selectedQuestion.imageEnabled ? "ml-auto" : "",
+                                        )}
+                                      />
+                                    </span>
+                                  </button>
+                                </div>
+
+                                {selectedQuestion.options.map(
+                                  (option, optionIndex) => (
+                                    <div
+                                      key={`${selectedQuestion.id}-${optionIndex}`}
+                                      onDragOver={(event) => {
+                                        event.preventDefault();
+                                        if (dragOverOptionIndex !== optionIndex) {
+                                          setDragOverOptionIndex(optionIndex);
+                                        }
+                                      }}
+                                      onDrop={(event) => {
+                                        event.preventDefault();
+
+                                        if (
+                                          draggingOptionIndex === null ||
+                                          draggingOptionIndex === optionIndex
+                                        ) {
+                                          setDraggingOptionIndex(null);
+                                          setDragOverOptionIndex(null);
+                                          return;
+                                        }
+
+                                        handleQuestionChange(
+                                          selectedQuestion.id,
+                                          (question) =>
+                                            reorderQuestionOptions(
+                                              question,
+                                              draggingOptionIndex,
+                                              optionIndex,
+                                            ),
+                                        );
+                                        setDraggingOptionIndex(null);
+                                        setDragOverOptionIndex(null);
+                                      }}
+                                      onDragEnd={() => {
+                                        setDraggingOptionIndex(null);
+                                        setDragOverOptionIndex(null);
+                                      }}
+                                      className={cn(
+                                        "grid grid-cols-[auto_minmax(0,1fr)_auto_auto] items-center gap-3 rounded-[16px] border px-3 py-3",
+                                        draggingOptionIndex === optionIndex
+                                          ? "opacity-70"
+                                          : "",
+                                        selectedQuestion.correctIndex === optionIndex
+                                          ? "border-[#8dd8ca] bg-[#f2fffb]"
+                                          : "border-[var(--dashboard-border-soft)] bg-[var(--dashboard-surface-muted)]",
+                                        dragOverOptionIndex === optionIndex &&
+                                          draggingOptionIndex !== null &&
+                                          draggingOptionIndex !== optionIndex
+                                          ? "border-[var(--dashboard-brand)] bg-[var(--dashboard-brand-soft-alt)]/50"
+                                          : "",
+                                      )}
+                                    >
+                                      <input
+                                        type={
+                                          selectedQuestion.selectionMode === "multiple"
+                                            ? "checkbox"
+                                            : "radio"
+                                        }
+                                        checked={getQuestionCorrectIndexes(
+                                          selectedQuestion,
+                                        ).includes(optionIndex)}
+                                        onChange={() =>
+                                          handleQuestionChange(
+                                            selectedQuestion.id,
+                                            (question) => {
+                                              if (question.selectionMode === "multiple") {
+                                                const nextCorrectIndexes =
+                                                  getQuestionCorrectIndexes(question).includes(
+                                                    optionIndex,
+                                                  )
+                                                    ? getQuestionCorrectIndexes(
+                                                        question,
+                                                      ).filter(
+                                                        (index) => index !== optionIndex,
+                                                      )
+                                                    : [
+                                                        ...getQuestionCorrectIndexes(question),
+                                                        optionIndex,
+                                                      ];
+
+                                                return applyCorrectIndexes(
+                                                  question,
+                                                  nextCorrectIndexes,
+                                                );
+                                              }
+
+                                              return applyCorrectIndexes(question, [
+                                                optionIndex,
+                                              ]);
+                                            },
+                                          )
+                                        }
+                                        className="h-4 w-4"
+                                      />
+                                      <input
+                                        value={option}
+                                        onChange={(event) =>
+                                          handleQuestionChange(
+                                            selectedQuestion.id,
+                                            (question) => ({
+                                              ...question,
+                                              options: question.options.map(
+                                                (candidate, candidateIndex) =>
+                                                  candidateIndex === optionIndex
+                                                    ? clampText(
+                                                        event.target.value,
+                                                        QUIZ_BUILDER_LIMITS.optionText,
+                                                      )
+                                                    : candidate,
+                                              ),
+                                            }),
+                                          )
+                                        }
+                                        maxLength={QUIZ_BUILDER_LIMITS.optionText}
+                                        className={cn(
+                                          dashboardInputVariants({ size: "md" }),
+                                          "border-none bg-white",
+                                        )}
+                                      />
+                                      <button
+                                        type="button"
+                                        draggable
+                                        onDragStart={(event) => {
+                                          event.dataTransfer.effectAllowed = "move";
+                                          setDraggingOptionIndex(optionIndex);
+                                          setDragOverOptionIndex(optionIndex);
+                                        }}
+                                        onDragEnd={() => {
+                                          setDraggingOptionIndex(null);
+                                          setDragOverOptionIndex(null);
+                                        }}
+                                        className="cursor-grab text-[var(--dashboard-text-faint)] transition hover:text-[var(--dashboard-text-soft)] active:cursor-grabbing"
+                                        title="Drag to reorder answer"
+                                        aria-label="Drag to reorder answer"
+                                      >
+                                        <GripVerticalIcon className="h-4 w-4" />
+                                      </button>
+                                      <DashboardButton
+                                        type="button"
+                                        variant="ghost"
+                                        size="iconSm"
+                                        onClick={() =>
+                                          handleQuestionChange(
+                                            selectedQuestion.id,
+                                            (question) => {
+                                              const nextQuestion = {
+                                                ...question,
+                                                options: question.options.filter(
+                                                  (_, candidateIndex) =>
+                                                    candidateIndex !== optionIndex,
+                                                ),
+                                              };
+                                              const nextCorrectIndexes =
+                                                getQuestionCorrectIndexes(question)
+                                                  .filter(
+                                                    (index) => index !== optionIndex,
+                                                  )
+                                                  .map((index) =>
+                                                    index > optionIndex
+                                                      ? index - 1
+                                                      : index,
+                                                  );
+
+                                              return applyCorrectIndexes(
+                                                nextQuestion,
+                                                nextCorrectIndexes,
+                                              );
+                                            },
+                                          )
+                                        }
+                                        disabled={selectedQuestion.options.length <= 2}
+                                      >
+                                        <Trash2 className="h-4 w-4 text-[#ef4444]" />
+                                      </DashboardButton>
+                                    </div>
+                                  ),
+                                )}
+
                                 <DashboardButton
                                   type="button"
                                   variant="secondary"
                                   size="sm"
+                                  disabled={selectedQuestion.questionType === "True/False"}
                                   onClick={() =>
                                     handleQuestionChange(
                                       selectedQuestion.id,
@@ -1792,264 +1747,339 @@ export function QuizBuilderWorkspace({
                                   }
                                 >
                                   <Plus className="h-4 w-4" />
-                                  Add option
+                                  Add answers
                                 </DashboardButton>
-                                {selectedQuestion.options.length > 2 ? (
-                                  <DashboardButton
-                                    type="button"
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() =>
+                              </div>
+                            </div>
+
+                            <div className="space-y-4">
+                              {selectedQuestion.imageEnabled ? (
+                                <div className="space-y-3">
+                                  <div className="overflow-hidden rounded-[18px] border border-[var(--dashboard-border-soft)] bg-[#7fd6ee]">
+                                    {selectedQuestion.imageUrl ? (
+                                      <img
+                                        src={selectedQuestion.imageUrl}
+                                        alt={`Question ${selectedQuestionIndex + 1} illustration`}
+                                        className="h-[180px] w-full object-cover"
+                                      />
+                                    ) : (
+                                      <div className="flex h-[180px] flex-col items-center justify-center gap-3 bg-[linear-gradient(180deg,#8adcf2_0%,#64cce8_100%)] px-4 text-center">
+                                        <Camera className="h-8 w-8 text-white" />
+                                        <p className="max-w-[180px] text-sm leading-6 text-white/90">
+                                          Add an image to make the question more visual.
+                                        </p>
+                                      </div>
+                                    )}
+                                  </div>
+                                  <div className="flex gap-2">
+                                    <DashboardButton
+                                      type="button"
+                                      variant="secondary"
+                                      size="sm"
+                                      className="flex-1"
+                                      onClick={() =>
+                                        handleAttachImage(selectedQuestion.id)
+                                      }
+                                    >
+                                      <Camera className="h-4 w-4" />
+                                      {selectedQuestion.imageUrl
+                                        ? "Replace photo"
+                                        : "Add photo"}
+                                    </DashboardButton>
+                                    <DashboardButton
+                                      type="button"
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() =>
+                                        handleQuestionChange(
+                                          selectedQuestion.id,
+                                          (question) => ({
+                                            ...question,
+                                            imageEnabled: false,
+                                            imageUrl: undefined,
+                                          }),
+                                        )
+                                      }
+                                    >
+                                      <Trash2 className="h-4 w-4" />
+                                    </DashboardButton>
+                                  </div>
+                                </div>
+                              ) : null}
+
+                              <label className="space-y-2">
+                                <span className="text-sm font-semibold text-[var(--dashboard-text-strong)]">
+                                  Feedback explanation
+                                </span>
+                                <textarea
+                                  value={selectedQuestion.explanation}
+                                  onChange={(event) =>
+                                    handleQuestionChange(
+                                      selectedQuestion.id,
+                                      (question) => ({
+                                        ...question,
+                                        explanation: clampText(
+                                          event.target.value,
+                                          QUIZ_BUILDER_LIMITS.explanation,
+                                        ),
+                                      }),
+                                    )
+                                  }
+                                  maxLength={QUIZ_BUILDER_LIMITS.explanation}
+                                  className={cn(
+                                    dashboardTextareaVariants({ size: "md" }),
+                                    "min-h-[200px] rounded-[20px] border-[var(--dashboard-border-soft)] bg-white",
+                                  )}
+                                />
+                                <p className="text-xs text-[var(--dashboard-text-faint)]">
+                                  {selectedQuestion.explanation.length}/
+                                  {QUIZ_BUILDER_LIMITS.explanation}
+                                </p>
+                              </label>
+
+                              <label className="hidden space-y-2 rounded-[18px] border border-[var(--dashboard-border-soft)] bg-white px-4 py-4">
+                                <span className="flex items-center gap-2 text-sm font-semibold text-[var(--dashboard-text-strong)]">
+                                  <Clock3 className="h-4 w-4 text-[var(--dashboard-text-soft)]" />
+                                  Estimation time
+                                </span>
+                                <div className="flex items-center gap-2">
+                                  <input
+                                    type="number"
+                                    min={1}
+                                    value={selectedQuestion.estimatedMinutes}
+                                    onChange={(event) =>
                                       handleQuestionChange(
                                         selectedQuestion.id,
                                         (question) => ({
                                           ...question,
-                                          options: question.options.slice(
-                                            0,
-                                            -1,
-                                          ),
-                                          correctIndex: Math.min(
-                                            question.correctIndex,
-                                            question.options.length - 2,
+                                          estimatedMinutes: Math.max(
+                                            1,
+                                            Number(event.target.value) || 1,
                                           ),
                                         }),
                                       )
                                     }
-                                  >
-                                    Remove last option
-                                  </DashboardButton>
-                                ) : null}
-                              </div>
+                                    className={cn(
+                                      dashboardInputVariants({ size: "md" }),
+                                      "w-24 bg-[var(--dashboard-surface-muted)]",
+                                    )}
+                                  />
+                                  <span className="text-sm text-[var(--dashboard-text-soft)]">
+                                    mins
+                                  </span>
+                                </div>
+                              </label>
 
-                              <div className="flex gap-2">
-                                <DashboardButton
-                                  type="button"
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => {
-                                    const currentIndex = questions.findIndex(
-                                      (question) =>
-                                        question.id === selectedQuestion.id,
-                                    );
-                                    setSelectedQuestionId(
-                                      questions[Math.max(0, currentIndex - 1)]
-                                        ?.id ?? selectedQuestion.id,
-                                    );
-                                  }}
-                                >
-                                  Previous
-                                </DashboardButton>
-                                <DashboardButton
-                                  type="button"
-                                  variant="secondary"
-                                  size="sm"
-                                  onClick={() => {
-                                    const currentIndex = questions.findIndex(
-                                      (question) =>
-                                        question.id === selectedQuestion.id,
-                                    );
-                                    setSelectedQuestionId(
-                                      questions[
-                                        Math.min(
-                                          questions.length - 1,
-                                          currentIndex + 1,
-                                        )
-                                      ]?.id ?? selectedQuestion.id,
-                                    );
-                                  }}
-                                >
-                                  Next
-                                </DashboardButton>
+                              <label className="hidden space-y-2 rounded-[18px] border border-[var(--dashboard-border-soft)] bg-white px-4 py-4">
+                                <span className="flex items-center gap-2 text-sm font-semibold text-[var(--dashboard-text-strong)]">
+                                  <CircleDot className="h-4 w-4 text-[var(--dashboard-text-soft)]" />
+                                  Mark as point
+                                </span>
+                                <div className="flex items-center gap-2">
+                                  <input
+                                    type="number"
+                                    min={1}
+                                    value={selectedQuestion.points}
+                                    onChange={(event) =>
+                                      handleQuestionChange(
+                                        selectedQuestion.id,
+                                        (question) => ({
+                                          ...question,
+                                          points: Math.max(
+                                            1,
+                                            Number(event.target.value) || 1,
+                                          ),
+                                        }),
+                                      )
+                                    }
+                                    className={cn(
+                                      dashboardInputVariants({ size: "md" }),
+                                      "w-24 bg-[var(--dashboard-surface-muted)]",
+                                    )}
+                                  />
+                                  <span className="text-sm text-[var(--dashboard-text-soft)]">
+                                    points
+                                  </span>
+                                </div>
+                              </label>
+
+                              <div className="hidden rounded-[22px] border border-[var(--dashboard-border-soft)] bg-white px-4 py-4">
+                                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--dashboard-text-faint)]">
+                                  Source summary
+                                </p>
+                                <p className="hidden mt-2 text-sm leading-6 text-[var(--dashboard-text-soft)]">
+                                  {parsedSource?.label ?? "Generated source"} · {focus || "General review"}
+                                </p>
+                                <p className="mt-2 text-sm leading-6 text-[var(--dashboard-text-soft)]">
+                                  {parsedSource?.label ?? "Generated source"} | {focus || "General review"}
+                                </p>
+                                <p className="mt-3 text-sm leading-6 text-[var(--dashboard-text-soft)]">
+                                  Use this side panel to keep the educational explanation aligned with the source material.
+                                </p>
                               </div>
                             </div>
                           </div>
-                        </div>
-                      ) : null}
-                    </div>
-                </section>
-              </DashboardSurface>
 
-              <DashboardSurface asChild radius="xl" padding="lg">
-                <section className="space-y-5">
-                  <div className="flex flex-wrap items-start justify-between gap-4">
-                    <div>
-                      <h2 className="text-[1.45rem] font-semibold text-[var(--dashboard-text-strong)]">
-                        {mode === "student" ? "Practice actions" : "Validation and final actions"}
-                      </h2>
-                      <p className="mt-2 text-[15px] leading-7 text-[var(--dashboard-text-soft)]">
-                        {mode === "student"
-                          ? "Keep this focused on learning: start the self-test, save it for later practice, or regenerate a cleaner set."
-                          : "Run a final sanity check before saving, exporting, or launching a test run."}
-                      </p>
-                    </div>
-                    <DashboardBadge
-                      tone={
-                        validationIssues.length === 0 ? "success" : "warning"
-                      }
-                      size="md"
-                    >
-                      {validationIssues.length === 0
-                        ? "No blocking issues"
-                        : `${validationIssues.length} issues to review`}
-                    </DashboardBadge>
-                  </div>
-
-                  <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_280px]">
-                    <div className="space-y-3">
-                      {validationIssues.length === 0 ? (
-                        <div className="rounded-[24px] border border-[var(--dashboard-success)] bg-[var(--dashboard-success-soft)]/55 px-5 py-5">
-                          <div className="flex items-center gap-3 text-[var(--dashboard-success)]">
-                            <CheckCircle2 className="h-5 w-5" />
-                            <span className="font-semibold">
-                              {copy.reviewReadyLabel}
-                            </span>
-                          </div>
-                          <p className="mt-3 text-sm leading-6 text-[var(--dashboard-text-soft)]">
-                            {mode === "student"
-                              ? "The set looks ready for personal practice. Start the self-test or save it to revisit later."
-                              : "All questions have content and answer keys. You can still refine wording, but nothing critical is missing."}
-                          </p>
-                        </div>
-                      ) : (
-                        validationIssues.map((issue) => (
-                          <button
-                            key={issue.id}
-                            type="button"
-                            onClick={() => {
-                              setSelectedQuestionId(issue.questionId);
-                            }}
-                            className={cn(
-                              "w-full rounded-[22px] border px-5 py-4 text-left transition",
-                              issue.tone === "danger"
-                                ? "border-[var(--dashboard-danger)] bg-[var(--dashboard-danger-soft)]/45"
-                                : "border-[var(--dashboard-warning)] bg-[var(--dashboard-warning-soft)]/50",
-                            )}
-                          >
-                            <div className="flex items-center gap-3">
-                              {issue.tone === "danger" ? (
-                                <XCircle className="h-4.5 w-4.5 text-[var(--dashboard-danger)]" />
-                              ) : (
-                                <AlertCircle className="h-4.5 w-4.5 text-[var(--dashboard-warning)]" />
-                              )}
-                              <span className="font-semibold text-[var(--dashboard-text-strong)]">
-                                {issue.label}
+                          <div className="mt-6 grid gap-4 border-t border-[var(--dashboard-border-soft)] pt-5 xl:grid-cols-[minmax(0,1.2fr)_220px_220px] xl:pl-6">
+                            <label className="space-y-2">
+                              <span className="text-sm font-semibold text-[var(--dashboard-text-strong)]">
+                                Randomize Order
                               </span>
+                              <select
+                                className={cn(
+                                  dashboardSelectVariants({ size: "md" }),
+                                  "w-full border-[var(--dashboard-border-soft)] bg-[var(--dashboard-surface-muted)] text-[var(--dashboard-text-soft)]",
+                                )}
+                                value={selectedQuestion.answerOrder}
+                                onChange={(event) =>
+                                  handleQuestionChange(
+                                    selectedQuestion.id,
+                                    (question) => ({
+                                      ...question,
+                                      answerOrder: event.target
+                                        .value as QuestionAnswerOrder,
+                                    }),
+                                  )
+                                }
+                              >
+                                <option value="fixed">
+                                  Keep choices in current order
+                                </option>
+                                <option value="shuffle">
+                                  Shuffle when quiz starts
+                                </option>
+                              </select>
+                            </label>
+
+                            <label className="space-y-2">
+                              <span className="text-sm font-semibold text-[var(--dashboard-text-strong)]">
+                                Estimation time
+                              </span>
+                              <div className="flex items-center gap-2 rounded-[16px] border border-[var(--dashboard-border-soft)] bg-[var(--dashboard-surface-muted)] px-3 py-2">
+                                <input
+                                  type="number"
+                                  min={1}
+                                  value={selectedQuestion.estimatedMinutes}
+                                  onChange={(event) =>
+                                    handleQuestionChange(
+                                      selectedQuestion.id,
+                                      (question) => ({
+                                        ...question,
+                                        estimatedMinutes: Math.max(
+                                          1,
+                                          Number(event.target.value) || 1,
+                                        ),
+                                      }),
+                                    )
+                                  }
+                                  className={cn(
+                                    dashboardInputVariants({ size: "sm" }),
+                                    "h-10 w-16 border-none bg-white px-3",
+                                  )}
+                                />
+                                <span className="text-sm text-[var(--dashboard-text-soft)]">
+                                  Mins
+                                </span>
+                              </div>
+                            </label>
+
+                            <label className="space-y-2">
+                              <span className="text-sm font-semibold text-[var(--dashboard-text-strong)]">
+                                Mark as point
+                              </span>
+                              <div className="flex items-center gap-2 rounded-[16px] border border-[var(--dashboard-border-soft)] bg-[var(--dashboard-surface-muted)] px-3 py-2">
+                                <input
+                                  type="number"
+                                  min={1}
+                                  value={selectedQuestion.points}
+                                  onChange={(event) =>
+                                    handleQuestionChange(
+                                      selectedQuestion.id,
+                                      (question) => ({
+                                        ...question,
+                                        points: Math.max(
+                                          1,
+                                          Number(event.target.value) || 1,
+                                        ),
+                                      }),
+                                    )
+                                  }
+                                  className={cn(
+                                    dashboardInputVariants({ size: "sm" }),
+                                    "h-10 w-16 border-none bg-white px-3",
+                                  )}
+                                />
+                                <span className="text-sm text-[var(--dashboard-text-soft)]">
+                                  Points
+                                </span>
+                              </div>
+                            </label>
+                          </div>
+
+                          <div className="mt-6 flex flex-wrap items-center justify-between gap-3 border-t border-[var(--dashboard-border-soft)] pt-5">
+                            <div className="text-sm text-[var(--dashboard-text-soft)]">
+                              Reorder questions from the left rail, or move through them here while editing.
                             </div>
-                            <p className="mt-2 text-sm leading-6 text-[var(--dashboard-text-soft)]">
-                              {issue.detail}
-                            </p>
-                          </button>
-                        ))
-                      )}
-                    </div>
 
-                    <div className="space-y-3">
-                      <label className="block space-y-2 rounded-[22px] border border-[var(--dashboard-border-soft)] bg-[var(--dashboard-surface-muted)] px-4 py-4">
-                        <span className="text-sm font-semibold text-[var(--dashboard-text-strong)]">
-                          {mode === "teacher"
-                            ? "Save Quiz visibility"
-                            : "Practice set visibility"}
-                        </span>
-                        <select
-                          value={publishVisibility}
-                          onChange={(event) =>
-                            setPublishVisibility(
-                              event.target.value as QuizLibraryVisibility,
-                            )
-                          }
-                          className={cn(
-                            dashboardSelectVariants({ size: "md" }),
-                            "w-full border-[var(--dashboard-border-soft)] bg-white",
-                          )}
-                        >
-                          <option value="private">Private</option>
-                          <option value="public">Public Library</option>
-                        </select>
-                        <p className="text-sm leading-6 text-[var(--dashboard-text-soft)]">
-                          {mode === "teacher"
-                            ? "Private quizzes stay in your owner views. Public quizzes also appear in the shared library."
-                            : "Private practice sets stay in your personal library. Public ones also appear in shared discovery."}
+                            <div className="flex gap-2">
+                              <DashboardButton
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                onClick={() =>
+                                  setSelectedQuestionId(
+                                    questions[Math.max(0, selectedQuestionIndex - 1)]
+                                      ?.id ?? selectedQuestion.id,
+                                  )
+                                }
+                              >
+                                Previous
+                              </DashboardButton>
+                              <DashboardButton
+                                type="button"
+                                variant="secondary"
+                                size="sm"
+                                onClick={() =>
+                                  setSelectedQuestionId(
+                                    questions[
+                                      Math.min(
+                                        questions.length - 1,
+                                        selectedQuestionIndex + 1,
+                                      )
+                                    ]?.id ?? selectedQuestion.id,
+                                  )
+                                }
+                              >
+                                Next
+                              </DashboardButton>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="rounded-[24px] border border-dashed border-[var(--dashboard-border-soft)] bg-white px-6 py-10 text-center">
+                        <p className="text-lg font-semibold text-[var(--dashboard-text-strong)]">
+                          Select a question to edit
                         </p>
-                      </label>
-
-                      {mode === "teacher" ? (
-                        <>
-                          <DashboardButton
-                            type="button"
-                            size="lg"
-                            className="w-full"
-                            onClick={() => handleSaveQuiz("draft")}
-                          >
-                            <Save className="h-4.5 w-4.5" />
-                            {copy.saveLabel}
-                          </DashboardButton>
-                          <DashboardButton type="button" variant="secondary" size="lg" className="w-full">
-                            <FileJson className="h-4.5 w-4.5" />
-                            Export as JSON
-                          </DashboardButton>
-                          <DashboardButton type="button" variant="secondary" size="lg" className="w-full">
-                            <Download className="h-4.5 w-4.5" />
-                            Export as Text
-                          </DashboardButton>
-                          <DashboardButton
-                            type="button"
-                            variant="soft"
-                            size="lg"
-                            className="w-full"
-                            onClick={() =>
-                              handleSaveQuiz(
-                                publishVisibility === "public"
-                                  ? "published-public"
-                                  : "published-private",
-                              )
-                            }
-                          >
-                            <CheckCircle2 className="h-4.5 w-4.5" />
-                            {copy.publishLabel}
-                          </DashboardButton>
-                        </>
-                      ) : (
-                        <>
-                          <DashboardButton type="button" size="lg" className="w-full" onClick={() => handleSaveQuiz("draft")}>
-                            <PlayCircle className="h-4.5 w-4.5" />
-                            {copy.runLabel}
-                          </DashboardButton>
-                          <DashboardButton
-                            type="button"
-                            variant="secondary"
-                            size="lg"
-                            className="w-full"
-                            onClick={() => handleSaveQuiz("draft")}
-                          >
-                            <Save className="h-4.5 w-4.5" />
-                            {copy.saveLabel}
-                          </DashboardButton>
-                          <DashboardButton
-                            type="button"
-                            variant="soft"
-                            size="lg"
-                            className="w-full"
-                            onClick={() =>
-                              handleSaveQuiz(
-                                publishVisibility === "public"
-                                  ? "published-public"
-                                  : "published-private",
-                              )
-                            }
-                          >
-                            <CheckCircle2 className="h-4.5 w-4.5" />
-                            {copy.publishLabel}
-                          </DashboardButton>
-                          <DashboardButton type="button" variant="secondary" size="lg" className="w-full" onClick={handleGenerateQuiz}>
-                            <RefreshCw className="h-4.5 w-4.5" />
-                            Regenerate
-                          </DashboardButton>
-                        </>
-                      )}
-                    </div>
+                        <p className="mt-2 text-sm leading-6 text-[var(--dashboard-text-soft)]">
+                          Pick any item from the left rail to open its full editor.
+                        </p>
+                      </div>
+                    )}
                   </div>
                 </section>
               </DashboardSurface>
+
+              <QuizBuilderReviewChecks
+                copy={copy}
+                handleDownloadQuizExport={handleDownloadQuizExport}
+                handleGenerateQuiz={handleGenerateQuiz}
+                mode={mode}
+                publishVisibility={publishVisibility}
+                setPublishVisibility={setPublishVisibility}
+                setSelectedQuestionId={setSelectedQuestionId}
+                validationIssues={validationIssues}
+              />
             </div>
           ) : null}
         </motion.div>

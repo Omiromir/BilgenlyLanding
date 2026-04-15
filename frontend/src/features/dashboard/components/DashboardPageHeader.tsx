@@ -72,15 +72,16 @@ export function DashboardPageHeader({
           ) : null}
         </div>
 
-        <p
-          className={cn(
-            dashboardPageSubtitleClassName,
-            "text-lg leading-8",
-            align === "center" ? "mx-auto text-center" : "text-left",
-          )}
-        >
-          {subtitle}
-        </p>
+        {subtitle ? (
+          <p
+            className={cn(
+              dashboardPageSubtitleClassName,
+              align === "center" ? "mx-auto text-center" : "text-left",
+            )}
+          >
+            {subtitle}
+          </p>
+        ) : null}
       </div>
 
       {resolvedActions ? (

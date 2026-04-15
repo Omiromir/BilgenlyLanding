@@ -1,34 +1,177 @@
-import { BookOpen, Clock3 } from "../../../components/icons/AppIcons";
-import { Link } from "react-router";
+import { useMemo, useState } from "react";
+import { Link, useNavigate } from "react-router";
+import { toast } from "sonner";
+import { Dialog } from "../../../components/ui/dialog";
 import logoPng from "../../../assets/logo.png";
-import { cn } from "../../../components/ui/utils";
+import { useAuth } from "../../../app/providers/AuthProvider";
+import { useQuizLibrary } from "../../../app/providers/QuizLibraryProvider";
+import { useQuizSessions } from "../../../app/providers/QuizSessionProvider";
+import { useTeacherClasses } from "../../../app/providers/TeacherClassesProvider";
+import { AssignmentSettingsForm } from "../../../features/assignments/AssignmentControls";
+import {
+  DEFAULT_ASSIGNMENT_SETTINGS_VALUES,
+  validateAssignmentSettings,
+  type AssignmentSettingsFormValues,
+} from "../../../features/assignments/assignmentConstraints";
 import { CtaPanel } from "../../../features/dashboard/components/CtaPanel";
 import { DashboardPageHeader } from "../../../features/dashboard/components/DashboardPageHeader";
 import {
+  DashboardBadge,
   DashboardButton,
-  DashboardSurface,
-  dashboardIconTextRowClassName,
   dashboardPageClassName,
-  dashboardSectionStackClassName,
   dashboardSplitGridClassName,
   dashboardStatsGridClassName,
-  dashboardTextToneClassName,
 } from "../../../features/dashboard/components/DashboardPrimitives";
+import {
+  DashboardModalBody,
+  DashboardModalContent,
+  DashboardModalFooter,
+  DashboardModalHeader,
+} from "../../../features/dashboard/components/DashboardModal";
 import { SectionCard } from "../../../features/dashboard/components/SectionCard";
 import { StatCard } from "../../../features/dashboard/components/StatCard";
+import { RecentQuizzesList } from "../../../features/dashboard/components/teacher-overview/RecentQuizzesList";
+import { StrugglingTopicsList } from "../../../features/dashboard/components/teacher-overview/StrugglingTopicsList";
 import {
-  teacherInsights,
-  teacherOverviewStats,
-  teacherRecentQuizzes,
-} from "../../../features/dashboard/mock/teacherOverview";
-
-const insightToneClassName = {
-  blue: dashboardTextToneClassName.brand,
-  amber: dashboardTextToneClassName.warning,
-  emerald: dashboardTextToneClassName.success,
-} as const;
+  buildTeacherOverviewData,
+  type RecentQuizOverviewItem,
+  type StrugglingTopicOverviewItem,
+} from "../../../features/dashboard/components/teacher-overview/teacherOverviewData";
 
 export function TeacherOverviewPage() {
+  const navigate = useNavigate();
+  const { currentUser } = useAuth();
+  const { quizzes } = useQuizLibrary();
+  const { classes, assignQuizToClasses } = useTeacherClasses();
+  const { sharedAssignedSessions } = useQuizSessions();
+  const [quizPendingAssignment, setQuizPendingAssignment] =
+    useState<RecentQuizOverviewItem | null>(null);
+  const [selectedClassIds, setSelectedClassIds] = useState<string[]>([]);
+  const [assignmentSettings, setAssignmentSettings] = useState<AssignmentSettingsFormValues>(
+    DEFAULT_ASSIGNMENT_SETTINGS_VALUES,
+  );
+  const [assignmentError, setAssignmentError] = useState("");
+  const [assignmentDeadlineError, setAssignmentDeadlineError] = useState("");
+
+  const activeClasses = useMemo(
+    () => classes.filter((teacherClass) => teacherClass.status === "active"),
+    [classes],
+  );
+  const overview = useMemo(
+    () =>
+      buildTeacherOverviewData({
+        classes,
+        quizzes,
+        sharedAssignedSessions,
+        currentTeacherName: currentUser?.fullName,
+      }),
+    [classes, currentUser?.fullName, quizzes, sharedAssignedSessions],
+  );
+
+  const getAssignedClassIdsForQuiz = (quizId: string) =>
+    activeClasses
+      .filter((teacherClass) =>
+        teacherClass.assignedQuizzes.some((assignedQuiz) => assignedQuiz.quizId === quizId),
+      )
+      .map((teacherClass) => teacherClass.id);
+
+  const handleViewQuizDetails = (quiz: RecentQuizOverviewItem) => {
+    if (quiz.viewDetailsTarget) {
+      navigate(
+        `/dashboard/teacher/analytics?classId=${quiz.viewDetailsTarget.classId}&assignmentId=${quiz.viewDetailsTarget.assignmentId}`,
+      );
+      return;
+    }
+
+    navigate("/dashboard/teacher/quiz-library", {
+      state: { libraryTab: quiz.isDraft ? "drafts" : "my-quizzes" },
+    });
+  };
+
+  const handleEditQuiz = (quiz: RecentQuizOverviewItem) => {
+    navigate("/dashboard/teacher/generate-quiz", {
+      state: { editQuizId: quiz.quizId },
+    });
+  };
+
+  const handleOpenAssignQuiz = (quiz: RecentQuizOverviewItem) => {
+    setQuizPendingAssignment(quiz);
+    setSelectedClassIds([]);
+    setAssignmentSettings(DEFAULT_ASSIGNMENT_SETTINGS_VALUES);
+    setAssignmentError("");
+    setAssignmentDeadlineError("");
+  };
+
+  const handleAssignQuizToClasses = () => {
+    if (!quizPendingAssignment) {
+      return;
+    }
+
+    if (!selectedClassIds.length) {
+      setAssignmentError("Select at least one active class to continue.");
+      return;
+    }
+
+    const validation = validateAssignmentSettings(assignmentSettings);
+
+    if (validation.errors.deadline) {
+      setAssignmentDeadlineError(validation.errors.deadline);
+      return;
+    }
+
+    const assignedClassIds = assignQuizToClasses(
+      {
+        quizId: quizPendingAssignment.quizId,
+        title: quizPendingAssignment.title,
+        topic: quizPendingAssignment.subjectLabel,
+        questionCount: quizPendingAssignment.questionCount,
+      },
+      selectedClassIds,
+      {
+        deadline: validation.deadline,
+        maxAttempts: validation.maxAttempts,
+        allowLateSubmissions: false,
+      },
+    );
+
+    if (!assignedClassIds.length) {
+      setAssignmentError("That quiz is already assigned to the selected classes.");
+      return;
+    }
+
+    toast.success(
+      `"${quizPendingAssignment.title}" assigned to ${assignedClassIds.length} ${
+        assignedClassIds.length === 1 ? "class" : "classes"
+      }.`,
+    );
+    setQuizPendingAssignment(null);
+    setSelectedClassIds([]);
+    setAssignmentSettings(DEFAULT_ASSIGNMENT_SETTINGS_VALUES);
+    setAssignmentError("");
+    setAssignmentDeadlineError("");
+  };
+
+  const handleViewTopicAnalytics = (topic: StrugglingTopicOverviewItem) => {
+    if (topic.primaryTarget) {
+      navigate(
+        `/dashboard/teacher/analytics?classId=${topic.primaryTarget.classId}&assignmentId=${topic.primaryTarget.assignmentId}`,
+      );
+      return;
+    }
+
+    navigate("/dashboard/teacher/analytics");
+  };
+
+  const handleCreateRemedialQuiz = (topic: StrugglingTopicOverviewItem) => {
+    navigate("/dashboard/teacher/generate-quiz", {
+      state: {
+        presetFocus: topic.topicLabel,
+        presetTitle: `${topic.topicLabel} Remedial Review`,
+        presetContext: `Create a targeted remedial quiz for students who are still struggling with ${topic.topicLabel}.`,
+      },
+    });
+  };
+
   return (
     <div className={dashboardPageClassName}>
       <DashboardPageHeader
@@ -59,91 +202,178 @@ export function TeacherOverviewPage() {
       />
 
       <div className={dashboardStatsGridClassName}>
-        {teacherOverviewStats.map((stat) => (
+        {overview.stats.map((stat) => (
           <StatCard key={stat.title} {...stat} />
         ))}
       </div>
 
       <div className={dashboardSplitGridClassName}>
-        <SectionCard title="Recent Quizzes">
-          <div className={dashboardSectionStackClassName}>
-            {teacherRecentQuizzes.map((quiz) => (
-              <DashboardSurface
-                asChild
-                key={quiz.title}
-                radius="md"
-                padding="sm"
-              >
-                <article>
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <h3 className="text-[1.15rem] font-semibold text-[var(--dashboard-text-strong)]">
-                      {quiz.title}
-                    </h3>
-                    <div className="mt-3 flex flex-wrap gap-5 text-sm text-[var(--dashboard-text-soft)]">
-                      <span className={dashboardIconTextRowClassName}>
-                        <BookOpen className="h-4 w-4" />
-                        {quiz.questionCount}
-                      </span>
-                      <span className={dashboardIconTextRowClassName}>
-                        <Clock3 className="h-4 w-4" />
-                        {quiz.className}
-                      </span>
-                    </div>
-                  </div>
-                  <span className="text-lg font-semibold text-[var(--dashboard-success)]">
-                    {quiz.accuracy}
-                  </span>
-                </div>
-
-                <div className="mt-5 flex gap-3">
-                  <DashboardButton type="button" size="lg" className="flex-1">
-                    View Details
-                  </DashboardButton>
-                  <DashboardButton type="button" variant="secondary" size="lg">
-                    Edit
-                  </DashboardButton>
-                </div>
-                </article>
-              </DashboardSurface>
-            ))}
-          </div>
+        <SectionCard
+          title="Recent Quizzes"
+          description="The latest quizzes you've created or assigned, with live completion and intervention signals from real class activity."
+        >
+          <RecentQuizzesList
+            quizzes={overview.recentQuizzes}
+            onViewDetails={handleViewQuizDetails}
+            onEdit={handleEditQuiz}
+            onAssign={handleOpenAssignQuiz}
+          />
         </SectionCard>
 
-        <SectionCard title="Topics Students Struggle With">
-          <div className={dashboardSectionStackClassName}>
-            {teacherInsights.map((insight) => (
-              <DashboardSurface
-                asChild
-                key={insight.title}
-                radius="md"
-                padding="sm"
-              >
-                <article>
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <h3 className="text-[1.15rem] font-semibold text-[var(--dashboard-text-strong)]">
-                      {insight.title}
-                    </h3>
-                    <p className="mt-2 text-sm leading-6 text-[var(--dashboard-text-soft)]">
-                      {insight.detail}
-                    </p>
-                  </div>
-                  <span
-                    className={cn(
-                      "text-lg font-semibold",
-                      insightToneClassName[insight.tone]
-                    )}
-                  >
-                    {insight.value}
-                  </span>
-                </div>
-                </article>
-              </DashboardSurface>
-            ))}
-          </div>
+        <SectionCard
+          title="Topics Students Struggle With"
+          description="Lowest-mastery concepts are calculated from real assigned-quiz results, so you can move straight into reteaching or remediation."
+        >
+          <StrugglingTopicsList
+            topics={overview.strugglingTopics}
+            onViewAnalytics={handleViewTopicAnalytics}
+            onCreateRemedialQuiz={handleCreateRemedialQuiz}
+          />
         </SectionCard>
       </div>
+
+      <Dialog
+        open={Boolean(quizPendingAssignment)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setQuizPendingAssignment(null);
+            setSelectedClassIds([]);
+            setAssignmentSettings(DEFAULT_ASSIGNMENT_SETTINGS_VALUES);
+            setAssignmentError("");
+            setAssignmentDeadlineError("");
+          }
+        }}
+      >
+        <DashboardModalContent className="max-w-[720px]">
+          <DashboardModalHeader
+            title="Assign quiz to classes"
+            description={
+              quizPendingAssignment
+                ? `Choose which classes should receive "${quizPendingAssignment.title}".`
+                : "Choose classes for this quiz."
+            }
+          />
+
+          <DashboardModalBody className="space-y-5">
+            {quizPendingAssignment ? (
+              <div className="rounded-[22px] border border-[var(--dashboard-border-soft)] bg-white px-5 py-4 shadow-[0_10px_30px_rgba(18,32,58,0.04)]">
+                <p className="text-[1.125rem] font-semibold tracking-[-0.02em] text-[var(--dashboard-text-strong)]">
+                  {quizPendingAssignment.title}
+                </p>
+                <p className="mt-1 text-sm leading-6 text-[var(--dashboard-text-soft)]">
+                  {quizPendingAssignment.subjectLabel} | {quizPendingAssignment.questionCount}{" "}
+                  {quizPendingAssignment.questionCount === 1 ? "question" : "questions"}
+                </p>
+              </div>
+            ) : null}
+
+            <div className="space-y-3">
+              {activeClasses.length ? (
+                activeClasses.map((teacherClass) => {
+                  const alreadyAssigned = quizPendingAssignment
+                    ? getAssignedClassIdsForQuiz(quizPendingAssignment.quizId).includes(
+                        teacherClass.id,
+                      )
+                    : false;
+
+                  return (
+                    <label
+                      key={teacherClass.id}
+                      className="flex items-start justify-between gap-4 rounded-[22px] border border-[var(--dashboard-border-soft)] bg-white px-5 py-4 shadow-[0_10px_30px_rgba(18,32,58,0.04)] transition-colors hover:border-[var(--dashboard-brand-soft)]"
+                    >
+                      <div className="flex items-start gap-4">
+                        <input
+                          type="checkbox"
+                          checked={selectedClassIds.includes(teacherClass.id)}
+                          disabled={alreadyAssigned}
+                          onChange={(event) => {
+                            const { checked } = event.target;
+
+                            setSelectedClassIds((current) =>
+                              checked
+                                ? [...current, teacherClass.id]
+                                : current.filter((item) => item !== teacherClass.id),
+                            );
+                            if (assignmentError) {
+                              setAssignmentError("");
+                            }
+                          }}
+                          className="mt-1 h-5 w-5 rounded border-[var(--dashboard-border-soft)] text-[var(--dashboard-brand)]"
+                        />
+                        <div>
+                          <p className="text-[1.125rem] font-semibold tracking-[-0.02em] text-[var(--dashboard-text-strong)]">
+                            {teacherClass.name}
+                          </p>
+                          <p className="mt-1 text-sm leading-6 text-[var(--dashboard-text-soft)]">
+                            {teacherClass.studentCount}{" "}
+                            {teacherClass.studentCount === 1 ? "student" : "students"} |{" "}
+                            {teacherClass.quizCount}{" "}
+                            {teacherClass.quizCount === 1 ? "quiz" : "quizzes"}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap justify-end gap-2 pt-0.5">
+                        {alreadyAssigned ? (
+                          <DashboardBadge tone="info">Already assigned</DashboardBadge>
+                        ) : null}
+                      </div>
+                    </label>
+                  );
+                })
+              ) : (
+                <div className="rounded-[22px] border border-dashed border-[var(--dashboard-border-soft)] bg-white px-5 py-5">
+                  <p className="font-semibold text-[var(--dashboard-text-strong)]">
+                    No active classes available
+                  </p>
+                  <p className="mt-1 text-sm leading-6 text-[var(--dashboard-text-soft)]">
+                    Create a class or restore an archived one, then come back here to assign quizzes to it.
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <AssignmentSettingsForm
+              values={assignmentSettings}
+              deadlineError={assignmentDeadlineError}
+              onChange={(nextValues) => {
+                setAssignmentSettings(nextValues);
+                if (assignmentDeadlineError) {
+                  setAssignmentDeadlineError("");
+                }
+              }}
+            />
+
+            {assignmentError ? (
+              <div className="rounded-[18px] border border-[var(--dashboard-danger-soft)] bg-[var(--dashboard-danger-soft)]/40 px-4 py-3">
+                <p className="text-sm leading-6 text-[var(--dashboard-danger)]">
+                  {assignmentError}
+                </p>
+              </div>
+            ) : null}
+          </DashboardModalBody>
+
+          <DashboardModalFooter>
+            <DashboardButton
+              type="button"
+              size="lg"
+              variant="ghost"
+              onClick={() => {
+                setQuizPendingAssignment(null);
+                setSelectedClassIds([]);
+                setAssignmentSettings(DEFAULT_ASSIGNMENT_SETTINGS_VALUES);
+                setAssignmentError("");
+                setAssignmentDeadlineError("");
+              }}
+            >
+              Cancel
+            </DashboardButton>
+            <DashboardButton type="button" size="lg" onClick={handleAssignQuizToClasses}>
+              Assign to classes
+            </DashboardButton>
+          </DashboardModalFooter>
+        </DashboardModalContent>
+      </Dialog>
     </div>
   );
 }

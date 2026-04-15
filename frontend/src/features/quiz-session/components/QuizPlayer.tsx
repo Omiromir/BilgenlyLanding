@@ -1,0 +1,104 @@
+import { useMemo } from "react";
+import { useQuizSessions } from "../../../app/providers/QuizSessionProvider";
+import { toAssignmentConstraintSource } from "../../assignments/assignmentConstraints";
+import { useAssignmentConstraints } from "../../assignments/useAssignmentConstraints";
+import { useQuizSession } from "../useQuizSession";
+import { QuizQuestionCard } from "./QuizQuestionCard";
+import { QuizSessionSidebar } from "./QuizSessionSidebar";
+
+interface QuizPlayerProps {
+  sessionId: string;
+}
+
+export function QuizPlayer({ sessionId }: QuizPlayerProps) {
+  const { sessions } = useQuizSessions();
+  const {
+    completeSession,
+    currentQuestion,
+    currentQuestionState,
+    goToNextQuestion,
+    isLastQuestion,
+    selectAnswer,
+    session,
+    setCurrentQuestion,
+    submitAnswer,
+    submittedCount,
+    totalQuestions,
+  } = useQuizSession(sessionId);
+  const assignmentConstraints = useAssignmentConstraints({
+    assignment: session?.assignmentContext
+      ? toAssignmentConstraintSource(session.assignmentContext)
+      : null,
+    sessions,
+    viewerRole: session?.viewerRole ?? "student",
+    refreshIntervalMs: 1000,
+  });
+
+  const canGoPrevious = useMemo(
+    () => Boolean(session && session.currentQuestionIndex > 0),
+    [session],
+  );
+  const canGoNext = useMemo(() => {
+    if (!session) {
+      return false;
+    }
+
+    return session.currentQuestionIndex < submittedCount;
+  }, [session, submittedCount]);
+
+  if (!session || !currentQuestion || !currentQuestionState) {
+    return null;
+  }
+
+  return (
+    <div className="grid gap-6 xl:grid-cols-[280px_minmax(0,1fr)] 2xl:grid-cols-[300px_minmax(0,1fr)]">
+      <QuizSessionSidebar
+        session={session}
+        assignmentConstraints={assignmentConstraints}
+        answeredCount={submittedCount}
+        currentQuestionIndex={session.currentQuestionIndex}
+        onJumpToQuestion={setCurrentQuestion}
+      />
+
+      <div className="space-y-5">
+        <QuizQuestionCard
+          question={currentQuestion}
+          questionNumber={session.currentQuestionIndex + 1}
+          totalQuestions={totalQuestions}
+          selectedIndices={currentQuestionState.selectedIndices}
+          submitted={currentQuestionState.submitted}
+          isCorrect={currentQuestionState.isCorrect}
+          onSelect={(selectedIndex) =>
+            selectAnswer(currentQuestion.id, selectedIndex)
+          }
+          onSubmit={() => submitAnswer(currentQuestion.id)}
+          onContinue={() => {
+            if (isLastQuestion) {
+              completeSession();
+              return;
+            }
+
+            goToNextQuestion();
+          }}
+          onPrevious={() => {
+            if (!canGoPrevious) {
+              return;
+            }
+
+            setCurrentQuestion(session.currentQuestionIndex - 1);
+          }}
+          onNext={() => {
+            if (!canGoNext) {
+              return;
+            }
+
+            setCurrentQuestion(session.currentQuestionIndex + 1);
+          }}
+          canGoPrevious={canGoPrevious}
+          canGoNext={canGoNext}
+          isLastQuestion={isLastQuestion}
+        />
+      </div>
+    </div>
+  );
+}

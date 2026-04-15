@@ -16,11 +16,13 @@ import { Link, useLocation, useNavigate } from "react-router";
 import { useAuth } from "../../../app/providers/AuthProvider";
 import { useTeacherClasses } from "../../../app/providers/TeacherClassesProvider";
 import { useQuizLibrary } from "../../../app/providers/QuizLibraryProvider";
+import { useQuizSessions } from "../../../app/providers/QuizSessionProvider";
 import { DashboardPageHeader } from "../../../features/dashboard/components/DashboardPageHeader";
 import {
-  DashboardBadge,
   DashboardButton,
+  DashboardSurface,
   dashboardPageClassName,
+  dashboardTabVariants,
 } from "../../../features/dashboard/components/DashboardPrimitives";
 import {
   AssignedQuizCard,
@@ -45,41 +47,61 @@ import {
   matchesQuizFilters,
   matchesQuizSearch,
 } from "../../../features/dashboard/components/quiz-library/quizLibraryUtils";
+import { useQuizLauncher } from "../../../features/quiz-session/useQuizLauncher";
+import { cn } from "../../../components/ui/utils";
 import { useDashboardPageMeta } from "../../../features/dashboard/hooks/useDashboardPageMeta";
 
-type StudentLibraryTab =
-  | "assigned"
-  | "discover"
-  | "generated"
-  | "saved"
-  | "history";
+type StudentLibraryTab = "assigned" | "discover" | "personal-library";
+type PersonalLibraryFilter = "all" | "generated" | "saved" | "recently-used";
 
 export function StudentQuizLibraryPage() {
   const meta = useDashboardPageMeta();
   const location = useLocation();
   const navigate = useNavigate();
-  const { currentStudent } = useAuth();
+  const { currentUser } = useAuth();
   const { classes } = useTeacherClasses();
   const { quizzes, deleteQuiz, duplicateQuizToLibrary, toggleSavedQuiz } =
     useQuizLibrary();
+  const { sessions } = useQuizSessions();
+  const { openQuiz } = useQuizLauncher();
+  const studentViewer = currentUser?.role === "student" ? currentUser : null;
+  const studentIdentity = useMemo(
+    () => ({
+      userId: studentViewer?.id,
+      email: studentViewer?.email,
+    }),
+    [studentViewer?.email, studentViewer?.id],
+  );
   const studentSources = useMemo(
-    () => buildStudentQuizLibrarySources(classes, quizzes, currentStudent?.id),
-    [classes, currentStudent?.id, quizzes],
+    () => buildStudentQuizLibrarySources(classes, quizzes, studentIdentity, sessions),
+    [classes, quizzes, sessions, studentIdentity],
   );
   const initialTab = location.state?.libraryTab as StudentLibraryTab | undefined;
   const [activeTab, setActiveTab] = useState<StudentLibraryTab>(
-    initialTab === "assigned" ||
-      initialTab === "generated" ||
-      initialTab === "saved" ||
-      initialTab === "history"
+    initialTab === "discover" || initialTab === "personal-library"
       ? initialTab
       : "assigned",
   );
+  const [personalFilter, setPersonalFilter] =
+    useState<PersonalLibraryFilter>("all");
   const [search, setSearch] = useState("");
   const [practiceState, setPracticeState] = useState("all");
   const deferredSearch = useDeferredValue(search);
   const shouldShowPracticeFilter =
-    activeTab === "assigned" || activeTab === "history";
+    activeTab === "assigned" ||
+    (activeTab === "personal-library" && personalFilter === "recently-used");
+
+  useEffect(() => {
+    if (activeTab !== "personal-library" && personalFilter !== "all") {
+      setPersonalFilter("all");
+    }
+  }, [activeTab, personalFilter]);
+
+  useEffect(() => {
+    if (!shouldShowPracticeFilter && practiceState !== "all") {
+      setPracticeState("all");
+    }
+  }, [practiceState, shouldShowPracticeFilter]);
 
   const getStudentItemsForTab = (tab: StudentLibraryTab) => {
     switch (tab) {
@@ -87,12 +109,18 @@ export function StudentQuizLibraryPage() {
         return studentSources.assigned;
       case "discover":
         return studentSources.discover;
-      case "generated":
-        return studentSources.myGenerated;
-      case "saved":
-        return studentSources.saved;
-      case "history":
-        return studentSources.history;
+      case "personal-library":
+        switch (personalFilter) {
+          case "generated":
+            return studentSources.personalGenerated;
+          case "saved":
+            return studentSources.personalSaved;
+          case "recently-used":
+            return studentSources.personalRecent;
+          case "all":
+          default:
+            return studentSources.personalLibrary;
+        }
       default:
         return studentSources.discover;
     }
@@ -119,51 +147,31 @@ export function StudentQuizLibraryPage() {
       id: "assigned" as const,
       label: "Assigned",
       description:
-        "Quizzes unlocked by the classes you have actually joined, with class context and teacher ownership kept front and center.",
+        "Teacher-assigned quizzes unlocked by classes you have already joined, with class context kept separate from everything else.",
       count: studentSources.assigned.length,
       emptyTitle: "No assigned quizzes yet",
       emptyDescription:
-        "Class-assigned quizzes appear here only after you accept the class invitation and become an active member.",
+        "Assigned quizzes only appear after you accept the class invitation and become an active class member.",
     },
     {
       id: "discover" as const,
       label: "Discover",
       description:
-        "Browse the public quiz library without mixing it into teacher-assigned class work.",
+        "Browse public quizzes without mixing them into teacher-assigned class work or your personal study shelf.",
       count: studentSources.discover.length,
-      emptyTitle: "No public quizzes match this search",
+      emptyTitle: "No public quizzes match this view",
       emptyDescription:
-        "Discover only includes shared public quizzes. Clear a filter to widen the library.",
+        "Discover only shows public quizzes. Clear the current search to widen the library.",
     },
     {
-      id: "generated" as const,
-      label: "My Generated",
+      id: "personal-library" as const,
+      label: "Personal Library",
       description:
-        "Your own study sets stay in one place, whether they are still drafts or already published.",
-      count: studentSources.myGenerated.length,
-      emptyTitle: "No generated quizzes yet",
+        "Keep your generated study sets, saved quizzes, and recently used personal practice in one simpler workspace.",
+      count: studentSources.personalLibrary.length,
+      emptyTitle: "Your personal library is empty",
       emptyDescription:
-        "Generate a quiz from your notes to start building a personal study library.",
-    },
-    {
-      id: "saved" as const,
-      label: "Saved",
-      description:
-        "Keep interesting public quizzes in a personal shelf without confusing them with your class assignments.",
-      count: studentSources.saved.length,
-      emptyTitle: "No saved quizzes yet",
-      emptyDescription:
-        "Save a public quiz from Discover to keep it close for later practice.",
-    },
-    {
-      id: "history" as const,
-      label: "History",
-      description:
-        "Return to active and completed practice sessions across assigned, saved, and self-generated quizzes.",
-      count: studentSources.history.length,
-      emptyTitle: "No practice history found",
-      emptyDescription:
-        "Once you begin or finish a quiz, it will appear here for a quick return.",
+        "Generate a study set or save a public quiz to start building your personal library.",
     },
   ];
 
@@ -192,12 +200,6 @@ export function StudentQuizLibraryPage() {
     },
   ];
   const visibleFilterOptions = shouldShowPracticeFilter ? filterOptions : [];
-
-  useEffect(() => {
-    if (!shouldShowPracticeFilter && practiceState !== "all") {
-      setPracticeState("all");
-    }
-  }, [practiceState, shouldShowPracticeFilter]);
 
   const assignedGroups = useMemo(() => {
     const grouped = new Map<
@@ -232,6 +234,29 @@ export function StudentQuizLibraryPage() {
 
     return Array.from(grouped.values());
   }, [filteredItems]);
+
+  const personalLibraryFilters = [
+    {
+      id: "all" as const,
+      label: "All",
+      count: studentSources.personalLibrary.length,
+    },
+    {
+      id: "generated" as const,
+      label: "Generated",
+      count: studentSources.personalGenerated.length,
+    },
+    {
+      id: "saved" as const,
+      label: "Saved",
+      count: studentSources.personalSaved.length,
+    },
+    {
+      id: "recently-used" as const,
+      label: "Recently Used",
+      count: studentSources.personalRecent.length,
+    },
+  ];
 
   const getStudentMetadata = (item: QuizLibraryItem): QuizCardMetadataItem[] => [
     {
@@ -271,8 +296,8 @@ export function StudentQuizLibraryPage() {
       return "Saved";
     }
 
-    if (item.sourceType === "history" && item.isAssigned) {
-      return "Assigned";
+    if (item.sourceType === "history") {
+      return "Recently used";
     }
 
     return item.isRecommended ? "Recommended" : undefined;
@@ -280,19 +305,28 @@ export function StudentQuizLibraryPage() {
 
   const getPracticeLabel = (item: QuizLibraryItem) => {
     if (item.sourceType === "assigned" || item.isAssigned) {
-      if (item.practiceState === "completed") {
-        return "View Quiz";
+      const assignedItem = item as StudentAssignedQuizLibraryItem;
+
+      if (assignedItem.assignmentState.status === "completed") {
+        return "View Results";
       }
 
-      if (item.practiceState === "in-progress") {
+      if (assignedItem.assignmentState.status === "in_progress") {
         return "Continue Quiz";
+      }
+
+      if (
+        assignedItem.assignmentState.status === "expired" ||
+        assignedItem.assignmentState.status === "attempts_exhausted"
+      ) {
+        return "Open Assignment";
       }
 
       return "Start Quiz";
     }
 
     if (item.practiceState === "completed") {
-      return "Practice Again";
+      return "Review Results";
     }
 
     if (item.practiceState === "in-progress") {
@@ -302,31 +336,47 @@ export function StudentQuizLibraryPage() {
     return "Start Practice";
   };
 
-  const getStudentActions = (item: QuizLibraryItem): QuizCardAction[] => {
-    if (activeTab === "history" && item.practiceState === "completed") {
-      return [
-        {
-          label: item.isAssigned ? "View Quiz" : "Practice Again",
-          icon: RotateCcw,
-        },
-        {
-          label: "Review Session",
-          icon: BookMarked,
-          variant: "secondary",
-        },
-      ];
-    }
+  const openStudentQuiz = (item: QuizLibraryItem) => {
+    openQuiz({
+      quizId: item.id,
+      viewerRole: "student",
+      assignmentId: item.assignmentContext?.assignmentId,
+      preferredSession:
+        item.sourceType === "assigned" || item.isAssigned
+          ? (() => {
+              const assignedItem = item as StudentAssignedQuizLibraryItem;
 
+              return assignedItem.assignmentState.status === "completed"
+                ? "completed"
+                : assignedItem.assignmentState.status === "in_progress"
+                  ? "in-progress"
+                  : undefined;
+            })()
+          : item.practiceState === "completed"
+          ? "completed"
+          : item.practiceState === "in-progress"
+            ? "in-progress"
+            : undefined,
+      navigationState: {
+        launchSourceType: item.sourceType ?? "quiz-library",
+        launchSourceLabel:
+          item.sourceType === "assigned"
+            ? `${item.assignmentContext?.className ?? "Class"} assignment`
+            : item.sourceLabel,
+        returnToPath: "/dashboard/student/quiz-library",
+        returnToLabel: "Back to quiz library",
+      },
+    });
+  };
+
+  const getStudentActions = (item: QuizLibraryItem): QuizCardAction[] => {
     if (item.sourceType === "assigned" || item.isAssigned) {
       return [
         {
           label: getPracticeLabel(item),
           icon: Play,
-        },
-        {
-          label: "View Details",
-          icon: BookOpen,
-          variant: "secondary",
+          iconDisplay: "label-only",
+          onClick: () => openStudentQuiz(item),
         },
       ];
     }
@@ -336,6 +386,8 @@ export function StudentQuizLibraryPage() {
         {
           label: getPracticeLabel(item),
           icon: Play,
+          iconDisplay: "label-only",
+          onClick: () => openStudentQuiz(item),
         },
         {
           label:
@@ -344,6 +396,7 @@ export function StudentQuizLibraryPage() {
               : "Edit Set",
           icon: FilePenLine,
           variant: "secondary",
+          iconDisplay: "icon-only",
           onClick: () =>
             navigate("/dashboard/student/generate-quiz", {
               state: { editQuizId: item.id },
@@ -353,7 +406,26 @@ export function StudentQuizLibraryPage() {
           label: "Delete",
           icon: Trash2,
           variant: "ghost",
+          iconDisplay: "icon-only",
           onClick: () => deleteQuiz(item.id, "student"),
+        },
+      ];
+    }
+
+    if (item.sourceType === "history" && item.practiceState === "completed") {
+      return [
+        {
+          label: "Review Results",
+          icon: RotateCcw,
+          iconDisplay: "label-only",
+          onClick: () => openStudentQuiz(item),
+        },
+        {
+          label: item.isSaved ? "Saved" : "Save",
+          icon: item.isSaved ? BookMarked : BookmarkPlus,
+          variant: item.isSaved ? "soft" : "ghost",
+          iconDisplay: "icon-only",
+          onClick: () => toggleSavedQuiz(item.id, "student"),
         },
       ];
     }
@@ -362,17 +434,21 @@ export function StudentQuizLibraryPage() {
       {
         label: getPracticeLabel(item),
         icon: Play,
+        iconDisplay: "label-only",
+        onClick: () => openStudentQuiz(item),
       },
       {
         label: item.isSaved ? "Saved" : "Save",
         icon: item.isSaved ? BookMarked : BookmarkPlus,
         variant: item.isSaved ? "soft" : "ghost",
+        iconDisplay: "icon-only",
         onClick: () => toggleSavedQuiz(item.id, "student"),
       },
       {
         label: "Duplicate",
         icon: Layers3,
         variant: "ghost",
+        iconDisplay: "icon-only",
         onClick: () => {
           const duplicate = duplicateQuizToLibrary(item.id, "student");
 
@@ -391,7 +467,7 @@ export function StudentQuizLibraryPage() {
       return {
         title: "Accept your class invitation first",
         description:
-          "You have pending class invitations. Once you accept them in Notifications, quizzes assigned to those classes will unlock here automatically.",
+          "You still have pending class invitations. Once you accept them in Notifications, teacher-assigned quizzes will unlock here automatically.",
       };
     }
 
@@ -399,14 +475,45 @@ export function StudentQuizLibraryPage() {
       return {
         title: "You have not joined a class yet",
         description:
-          "Assigned quizzes are membership-based. Join a class from Notifications to see class work in this section.",
+          "Assigned quizzes are membership-based. Join a class from Notifications to see class work here.",
       };
     }
 
     return {
       title: "Your classes have no assigned quizzes yet",
       description:
-        "You are already in at least one class, but your teachers have not assigned quizzes to those classes yet.",
+        "You are already in at least one class, but no teacher has attached quizzes to those classes yet.",
+    };
+  };
+
+  const getPersonalLibraryEmptyState = () => {
+    if (personalFilter === "generated") {
+      return {
+        title: "No generated study sets yet",
+        description:
+          "Generate a quiz from your notes to start building your personal study library.",
+      };
+    }
+
+    if (personalFilter === "saved") {
+      return {
+        title: "No saved quizzes yet",
+        description:
+          "Save a public quiz from Discover to keep it in your personal library.",
+      };
+    }
+
+    if (personalFilter === "recently-used") {
+      return {
+        title: "No recent personal practice yet",
+        description:
+          "Once you begin or finish a quiz from your personal library, it will appear here for quick return.",
+      };
+    }
+
+    return {
+      title: activeTabConfig.emptyTitle,
+      description: activeTabConfig.emptyDescription,
     };
   };
 
@@ -428,9 +535,18 @@ export function StudentQuizLibraryPage() {
                     </p>
                   </div>
 
-                  <DashboardBadge tone="info" size="md">
-                    {group.items.length} {group.items.length === 1 ? "quiz" : "quizzes"}
-                  </DashboardBadge>
+                  <DashboardButton
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    onClick={() =>
+                      navigate("/dashboard/student/classes", {
+                        state: { selectedClassId: group.classId },
+                      })
+                    }
+                  >
+                    Open class
+                  </DashboardButton>
                 </div>
 
                 <QuizGrid
@@ -469,6 +585,17 @@ export function StudentQuizLibraryPage() {
       );
     }
 
+    if (activeTab === "personal-library" && !filteredItems.length) {
+      const emptyState = getPersonalLibraryEmptyState();
+
+      return (
+        <SearchEmptyState
+          title={emptyState.title}
+          description={emptyState.description}
+        />
+      );
+    }
+
     if (filteredItems.length) {
       return (
         <QuizGrid
@@ -498,7 +625,7 @@ export function StudentQuizLibraryPage() {
     <div className={dashboardPageClassName}>
       <DashboardPageHeader
         title={meta?.title ?? "Quiz Library"}
-        subtitle="Keep assigned class work separate from discovery and personal study sets, with visibility tied to the classes you have actually joined."
+        subtitle="Keep class-assigned work separate from public discovery and your personal study shelf, with fewer overlapping categories."
         actions={
           <DashboardButton asChild size="lg">
             <Link to="/dashboard/student/generate-quiz">
@@ -514,6 +641,40 @@ export function StudentQuizLibraryPage() {
         onChange={setActiveTab}
       />
 
+      {activeTab === "personal-library" ? (
+        <DashboardSurface radius="lg" padding="sm">
+          <div className="flex flex-wrap gap-2">
+            {personalLibraryFilters.map((filter) => {
+              const isActive = filter.id === personalFilter;
+
+              return (
+                <button
+                  key={filter.id}
+                  type="button"
+                  className={cn(
+                    dashboardTabVariants({ active: isActive }),
+                    "w-auto min-w-[152px] justify-between px-4 py-3 text-sm",
+                  )}
+                  onClick={() => setPersonalFilter(filter.id)}
+                >
+                  <span>{filter.label}</span>
+                  <span
+                    className={cn(
+                      "rounded-full px-2.5 py-1 text-xs font-semibold",
+                      isActive
+                        ? "bg-white/16 text-white"
+                        : "bg-[var(--dashboard-surface-muted)] text-[var(--dashboard-text-soft)]",
+                    )}
+                  >
+                    {filter.count}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </DashboardSurface>
+      ) : null}
+
       <QuizFilterBar
         searchValue={search}
         onSearchChange={setSearch}
@@ -523,7 +684,9 @@ export function StudentQuizLibraryPage() {
         helperText={
           activeTab === "assigned"
             ? "Assigned quizzes only appear after invitation acceptance creates an active class membership."
-            : undefined
+            : activeTab === "personal-library"
+              ? "Personal Library combines your generated study sets, saved quizzes, and recent personal practice in one clearer place."
+              : undefined
         }
       />
 

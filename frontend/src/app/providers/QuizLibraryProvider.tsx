@@ -13,6 +13,8 @@ import type {
   QuizQuestionRecord,
   QuizRecord,
 } from "../../features/dashboard/components/quiz-library/quizLibraryTypes";
+import { useAuth } from "./AuthProvider";
+import { useTeacherClasses } from "./TeacherClassesProvider";
 
 const QUIZ_LIBRARY_STORAGE_KEY = "bilgenly_quiz_library";
 
@@ -39,6 +41,15 @@ interface QuizLibraryContextValue {
   quizzes: QuizRecord[];
   saveGeneratedQuiz: (input: SaveGeneratedQuizInput) => QuizRecord;
   getQuizById: (quizId: string) => QuizRecord | undefined;
+  syncQuizPracticeState: (
+    quizId: string,
+    updates: Partial<
+      Pick<
+        QuizRecord,
+        "practiceState" | "practiceProgressLabel" | "attemptCount" | "averageScore"
+      >
+    >,
+  ) => void;
   publishQuiz: (
     quizId: string,
     viewerRole: "teacher" | "student",
@@ -68,7 +79,14 @@ function formatQuizDate(date: Date) {
   }).format(date);
 }
 
-function getOwnerName(role: "teacher" | "student") {
+function getOwnerName(
+  role: "teacher" | "student",
+  currentUserName?: string | null,
+) {
+  if (currentUserName?.trim()) {
+    return currentUserName.trim();
+  }
+
   return role === "teacher" ? "Professor Doe" : "You";
 }
 
@@ -85,6 +103,98 @@ function normalizeTags(tags: string[]) {
     seen.add(normalized);
     return true;
   });
+}
+
+function sanitizeQuizRecord(quiz: QuizRecord): QuizRecord {
+  return {
+    ...quiz,
+    tags: normalizeTags(quiz.tags ?? []),
+  };
+}
+
+function loadQuizLibraryFromStorage() {
+  const mergedByQuizId = new Map<string, QuizRecord>();
+  const legacyScopedKeys: string[] = [];
+  const mergeQuizRecords = (records: QuizRecord[]) => {
+    records.forEach((quiz) => {
+      if (typeof quiz?.id !== "string" || !quiz.id) {
+        return;
+      }
+
+      const candidateQuiz = sanitizeQuizRecord(quiz);
+      const existingQuiz = mergedByQuizId.get(candidateQuiz.id);
+
+      if (!existingQuiz) {
+        mergedByQuizId.set(candidateQuiz.id, candidateQuiz);
+        return;
+      }
+
+      const existingUpdatedAt = new Date(existingQuiz.updatedAt).getTime();
+      const candidateUpdatedAt = new Date(candidateQuiz.updatedAt).getTime();
+
+      if (
+        Number.isNaN(existingUpdatedAt) ||
+        candidateUpdatedAt >= existingUpdatedAt
+      ) {
+        mergedByQuizId.set(candidateQuiz.id, candidateQuiz);
+      }
+    });
+  };
+
+  const sharedValue = localStorage.getItem(QUIZ_LIBRARY_STORAGE_KEY);
+
+  if (sharedValue) {
+    try {
+      const parsed = JSON.parse(sharedValue) as QuizRecord[];
+
+      if (Array.isArray(parsed)) {
+        mergeQuizRecords(parsed);
+      }
+    } catch {
+      localStorage.removeItem(QUIZ_LIBRARY_STORAGE_KEY);
+    }
+  }
+
+  for (let index = 0; index < localStorage.length; index += 1) {
+    const storageKey = localStorage.key(index);
+
+    if (
+      !storageKey ||
+      !storageKey.startsWith(`${QUIZ_LIBRARY_STORAGE_KEY}:`)
+    ) {
+      continue;
+    }
+
+    legacyScopedKeys.push(storageKey);
+
+    const scopedValue = localStorage.getItem(storageKey);
+
+    if (!scopedValue) {
+      continue;
+    }
+
+    try {
+      const parsed = JSON.parse(scopedValue) as QuizRecord[];
+
+      if (!Array.isArray(parsed)) {
+        continue;
+      }
+
+      mergeQuizRecords(parsed);
+    } catch {
+      continue;
+    }
+  }
+
+  if (!mergedByQuizId.size) {
+    return null;
+  }
+
+  const mergedValue = JSON.stringify(Array.from(mergedByQuizId.values()));
+  localStorage.setItem(QUIZ_LIBRARY_STORAGE_KEY, mergedValue);
+  legacyScopedKeys.forEach((storageKey) => localStorage.removeItem(storageKey));
+
+  return mergedValue;
 }
 
 export function mapQuizRecordToLibraryItem(
@@ -140,11 +250,16 @@ export function getQuizLibraryItemsForRole(
 }
 
 export function QuizLibraryProvider({ children }: QuizLibraryProviderProps) {
+  const { currentUser } = useAuth();
+  const { syncAssignedQuizDetails } = useTeacherClasses();
   const [quizzes, setQuizzes] = useState<QuizRecord[]>([]);
   const [isHydrated, setIsHydrated] = useState(false);
 
   useEffect(() => {
-    const savedValue = localStorage.getItem(QUIZ_LIBRARY_STORAGE_KEY);
+    setQuizzes([]);
+    setIsHydrated(false);
+
+    const savedValue = loadQuizLibraryFromStorage();
 
     if (!savedValue) {
       setIsHydrated(true);
@@ -155,10 +270,7 @@ export function QuizLibraryProvider({ children }: QuizLibraryProviderProps) {
       const parsed = JSON.parse(savedValue) as QuizRecord[];
       setQuizzes(
         Array.isArray(parsed)
-          ? parsed.map((quiz) => ({
-              ...quiz,
-              tags: normalizeTags(quiz.tags ?? []),
-            }))
+          ? parsed.map(sanitizeQuizRecord)
           : [],
       );
     } catch {
@@ -176,6 +288,20 @@ export function QuizLibraryProvider({ children }: QuizLibraryProviderProps) {
     localStorage.setItem(QUIZ_LIBRARY_STORAGE_KEY, JSON.stringify(quizzes));
   }, [isHydrated, quizzes]);
 
+  useEffect(() => {
+    if (!isHydrated) {
+      return;
+    }
+
+    quizzes.forEach((quiz) => {
+      syncAssignedQuizDetails(quiz.id, {
+        title: quiz.title,
+        topic: quiz.topic,
+        questionCount: quiz.questions.length || quiz.questionCount,
+      });
+    });
+  }, [isHydrated, quizzes, syncAssignedQuizDetails]);
+
   const value = useMemo<QuizLibraryContextValue>(
     () => ({
       quizzes,
@@ -186,7 +312,7 @@ export function QuizLibraryProvider({ children }: QuizLibraryProviderProps) {
             input.existingQuizId ??
             `quiz-${now.getTime()}-${Math.random().toString(36).slice(2, 8)}`,
           ownerRole: input.ownerRole,
-          ownerName: getOwnerName(input.ownerRole),
+          ownerName: getOwnerName(input.ownerRole, currentUser?.fullName),
           title: input.title.trim(),
           description: input.description.trim(),
           topic: input.topic.trim(),
@@ -220,12 +346,28 @@ export function QuizLibraryProvider({ children }: QuizLibraryProviderProps) {
             ...quiz,
             savedByRoles: currentQuiz.savedByRoles,
             sourceQuizId: currentQuiz.sourceQuizId,
+            practiceState: currentQuiz.practiceState ?? input.practiceState,
+            practiceProgressLabel: currentQuiz.practiceProgressLabel,
+            attemptCount: currentQuiz.attemptCount,
+            averageScore: currentQuiz.averageScore,
           };
           return next;
         });
         return quiz;
       },
       getQuizById: (quizId) => quizzes.find((quiz) => quiz.id === quizId),
+      syncQuizPracticeState: (quizId, updates) => {
+        setQuizzes((current) =>
+          current.map((quiz) =>
+            quiz.id === quizId
+              ? {
+                  ...quiz,
+                  ...updates,
+                }
+              : quiz,
+          ),
+        );
+      },
       publishQuiz: (quizId, viewerRole, visibility) => {
         setQuizzes((current) =>
           current.map((quiz) => {
@@ -292,7 +434,7 @@ export function QuizLibraryProvider({ children }: QuizLibraryProviderProps) {
           ...source,
           id: `quiz-${now.getTime()}-${Math.random().toString(36).slice(2, 8)}`,
           ownerRole: viewerRole,
-          ownerName: getOwnerName(viewerRole),
+          ownerName: getOwnerName(viewerRole, currentUser?.fullName),
           sourceQuizId: source.id,
           savedByRoles: [],
           title: `${source.title} Copy`,
@@ -306,13 +448,17 @@ export function QuizLibraryProvider({ children }: QuizLibraryProviderProps) {
             ...question,
             options: [...question.options],
           })),
+          practiceState: viewerRole === "student" ? "ready" : undefined,
+          practiceProgressLabel: undefined,
+          attemptCount: undefined,
+          averageScore: undefined,
         };
 
         setQuizzes((current) => [duplicate, ...current]);
         return duplicate;
       },
     }),
-    [quizzes],
+    [currentUser?.fullName, quizzes],
   );
 
   return (

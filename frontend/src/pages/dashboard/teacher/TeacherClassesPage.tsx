@@ -1,4 +1,4 @@
-import { useDeferredValue, useEffect, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import { Archive, BookOpen, Trash2, Users } from "../../../components/icons/AppIcons";
 import {
   AlertDialog,
@@ -11,15 +11,22 @@ import {
   AlertDialogTitle,
 } from "../../../components/ui/alert-dialog";
 import { useTeacherClasses } from "../../../app/providers/TeacherClassesProvider";
+import {
+  getQuizLibraryItemsForRole,
+  useQuizLibrary,
+} from "../../../app/providers/QuizLibraryProvider";
+import { useQuizSessions } from "../../../app/providers/QuizSessionProvider";
 import { DashboardPageHeader } from "../../../features/dashboard/components/DashboardPageHeader";
 import {
   DashboardButton,
+  DashboardSurface,
+  dashboardMetaTextClassName,
   dashboardPageClassName,
 } from "../../../features/dashboard/components/DashboardPrimitives";
 import { SectionCard } from "../../../features/dashboard/components/SectionCard";
-import { StatCard } from "../../../features/dashboard/components/StatCard";
 import {
   AddStudentsDialog,
+  AssignQuizDialog,
   TeacherClassCard,
   TeacherClassDetailsPanel,
   TeacherClassFilterBar,
@@ -31,9 +38,10 @@ import type {
   TeacherClassFormValues,
   TeacherClassRecord,
   TeacherClassStatus,
-  TeacherClassStudent,
 } from "../../../features/dashboard/components/classes/teacherClassesTypes";
+import { isDraftQuiz } from "../../../features/dashboard/components/quiz-library/quizLibraryUtils";
 import { matchesTeacherClassSearch } from "../../../features/dashboard/components/classes/teacherClassesUtils";
+import { buildTeacherAssignedQuizAnalytics } from "../../../features/dashboard/components/teacher-analytics/teacherQuizAnalyticsUtils";
 import { useDashboardPageMeta } from "../../../features/dashboard/hooks/useDashboardPageMeta";
 
 export function TeacherClassesPage() {
@@ -44,13 +52,15 @@ export function TeacherClassesPage() {
     updateClass,
     setClassStatus,
     addStudentsToClass,
-    removeStudentFromClass,
-    resendStudentInvite,
+    assignQuizToClasses,
     removeQuizFromClass,
     deleteClass,
   } = useTeacherClasses();
+  const { quizzes } = useQuizLibrary();
+  const { sharedAssignedSessions } = useQuizSessions();
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isAddStudentsDialogOpen, setIsAddStudentsDialogOpen] = useState(false);
+  const [isAssignQuizDialogOpen, setIsAssignQuizDialogOpen] = useState(false);
   const [editingClass, setEditingClass] = useState<TeacherClassRecord | null>(null);
   const [selectedClassId, setSelectedClassId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
@@ -114,7 +124,7 @@ export function TeacherClassesPage() {
   };
 
   const handleAddStudents = (emails: string[]) => {
-    if (!selectedClass) {
+    if (!selectedClass || selectedClass.status !== "active") {
       return;
     }
 
@@ -127,32 +137,12 @@ export function TeacherClassesPage() {
     setMembershipFeedback(
       `${addedStudents.length} ${
         addedStudents.length === 1 ? "student was" : "students were"
-      } invited to ${selectedClass.name}. Matching mock students can now see the invitation in Notifications.`,
-    );
-  };
-
-  const handleRemoveStudent = (student: TeacherClassStudent) => {
-    if (!selectedClass) {
-      return;
-    }
-
-    removeStudentFromClass(selectedClass.id, student.id);
-    setMembershipFeedback(`${student.fullName} was removed from ${selectedClass.name}.`);
-  };
-
-  const handleResendInvite = (student: TeacherClassStudent) => {
-    if (!selectedClass) {
-      return;
-    }
-
-    resendStudentInvite(selectedClass.id, student.id);
-    setMembershipFeedback(
-      `Invite resent to ${student.email}. The student notification was refreshed.`,
+      } invited to ${selectedClass.name}.`,
     );
   };
 
   const handleRemoveAssignedQuiz = (quiz: { quizId: string; title: string }) => {
-    if (!selectedClass) {
+    if (!selectedClass || selectedClass.status !== "active") {
       return;
     }
 
@@ -162,6 +152,10 @@ export function TeacherClassesPage() {
 
   const selectedClass =
     classes.find((item) => item.id === selectedClassId) ?? null;
+  const isSelectedClassActive = selectedClass?.status === "active";
+  const assignableQuizzes = getQuizLibraryItemsForRole(quizzes, "teacher").filter(
+    (quiz) => quiz.isOwner && !isDraftQuiz(quiz.status) && quiz.status !== "archived",
+  );
   const filteredClasses = classes.filter((teacherClass) => {
     const matchesStatus =
       statusFilter === "all" ? true : teacherClass.status === statusFilter;
@@ -176,12 +170,85 @@ export function TeacherClassesPage() {
     (total, teacherClass) => total + teacherClass.studentCount,
     0,
   );
+  const overviewItems = [
+    {
+      label: "Total classes",
+      value: classes.length,
+    },
+    {
+      label: "Active classes",
+      value: activeClassesCount,
+    },
+    {
+      label: "Archived classes",
+      value: archivedClassesCount,
+      helper: totalStudentsCount
+        ? `${totalStudentsCount} student memberships`
+        : "",
+    },
+  ];
+  const assignmentInsights = useMemo(() => {
+    if (!selectedClass) {
+      return {};
+    }
+
+    return Object.fromEntries(
+      selectedClass.assignedQuizzes.map((assignment) => {
+        const analytics = buildTeacherAssignedQuizAnalytics(
+          selectedClass,
+          assignment,
+          sharedAssignedSessions,
+        );
+
+        return [
+          assignment.assignmentId,
+          {
+            attemptedStudentsCount: analytics.studentsWithAttemptsCount,
+            exhaustedStudentsCount: analytics.exhaustedAttemptsStudentsCount,
+            missedDeadlineCount: analytics.missedDeadlineStudentsCount,
+          },
+        ];
+      }),
+    );
+  }, [selectedClass, sharedAssignedSessions]);
+
+  const handleAssignQuiz = (
+    quiz: (typeof assignableQuizzes)[number],
+    settings: {
+      deadline: string | null;
+      maxAttempts: number | null;
+      allowLateSubmissions: boolean;
+    },
+  ) => {
+    if (!selectedClass || selectedClass.status !== "active") {
+      return;
+    }
+
+    const assignedClassIds = assignQuizToClasses(
+      {
+        quizId: quiz.id,
+        title: quiz.title,
+        topic: quiz.topic,
+        questionCount: quiz.questionCount,
+      },
+      [selectedClass.id],
+      settings,
+    );
+
+    if (!assignedClassIds.length) {
+      setMembershipFeedback(`${quiz.title} is already assigned to ${selectedClass.name}.`);
+      return;
+    }
+
+    setMembershipFeedback(`${quiz.title} was assigned to ${selectedClass.name}.`);
+    setIsAssignQuizDialogOpen(false);
+  };
 
   return (
     <div className={dashboardPageClassName}>
       <DashboardPageHeader
         title={meta?.title ?? "Classes"}
-        subtitle="Create, organize, and manage your real class workspaces with room for students, quizzes, and classroom activity."
+        subtitle=""
         actions={
           <DashboardButton
             type="button"
@@ -194,34 +261,31 @@ export function TeacherClassesPage() {
         }
       />
 
-      <div className="grid gap-5 md:grid-cols-3">
-        <StatCard
-          title="Total Classes"
-          value={String(classes.length)}
-          change={classes.length ? "Live classroom spaces you manage" : ""}
-          icon={Users}
-          iconClassName="bg-[var(--dashboard-brand-soft-alt)] text-[var(--dashboard-brand)]"
-        />
-        <StatCard
-          title="Active Classes"
-          value={String(activeClassesCount)}
-          change={activeClassesCount ? "Ready for current learning activity" : ""}
-          icon={BookOpen}
-          iconClassName="bg-[var(--dashboard-brand-soft)] text-[var(--dashboard-brand-strong)]"
-        />
-        <StatCard
-          title="Archived Classes"
-          value={String(archivedClassesCount)}
-          change={totalStudentsCount ? `${totalStudentsCount} students across all classes` : ""}
-          icon={Archive}
-          iconClassName="bg-[var(--dashboard-brand-soft-alt)] text-[var(--dashboard-brand)]"
-        />
+      <div className="grid gap-4 md:grid-cols-3">
+        {overviewItems.map((item) => (
+          <DashboardSurface
+            key={item.label}
+            variant="muted"
+            radius="lg"
+            padding="sm"
+            className="space-y-2"
+          >
+            <p className={dashboardMetaTextClassName}>{item.label}</p>
+            <p className="text-[2rem] font-semibold tracking-[-0.04em] text-[var(--dashboard-text-strong)]">
+              {item.value}
+            </p>
+            {item.helper ? (
+              <p className="text-sm leading-6 text-[var(--dashboard-text-soft)]">
+                {item.helper}
+              </p>
+            ) : null}
+          </DashboardSurface>
+        ))}
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.45fr)_minmax(320px,0.95fr)]">
+      <div className="grid gap-6 xl:grid-cols-[minmax(320px,0.95fr)_minmax(0,1.25fr)]">
         <SectionCard
-          title="Your Classes"
-          description="Manage class setup, quickly find existing groups, and keep one reliable source of truth for classroom organization."
+          title="Class List"
           actions={null}
           contentClassName="space-y-5"
         >
@@ -245,7 +309,7 @@ export function TeacherClassesPage() {
               }}
             />
           ) : (
-            <div className="grid gap-5 md:grid-cols-2">
+            <div className="space-y-3">
               {filteredClasses.map((teacherClass) => (
                 <TeacherClassCard
                   key={teacherClass.id}
@@ -265,10 +329,14 @@ export function TeacherClassesPage() {
           teacherClass={selectedClass}
           hasClasses={classes.length > 0}
           membershipFeedback={membershipFeedback}
-          onOpenAddStudents={() => setIsAddStudentsDialogOpen(true)}
-          onRemoveStudent={handleRemoveStudent}
-          onResendInvite={handleResendInvite}
-          onRemoveAssignedQuiz={handleRemoveAssignedQuiz}
+          assignmentInsights={assignmentInsights}
+          onOpenAddStudents={
+            isSelectedClassActive ? () => setIsAddStudentsDialogOpen(true) : undefined
+          }
+          onOpenAssignQuiz={
+            isSelectedClassActive ? () => setIsAssignQuizDialogOpen(true) : undefined
+          }
+          onRemoveAssignedQuiz={isSelectedClassActive ? handleRemoveAssignedQuiz : undefined}
         />
       </div>
 
@@ -301,9 +369,17 @@ export function TeacherClassesPage() {
 
       <AddStudentsDialog
         open={isAddStudentsDialogOpen}
-        teacherClass={selectedClass}
+        teacherClass={isSelectedClassActive ? selectedClass : null}
         onOpenChange={setIsAddStudentsDialogOpen}
         onSubmit={handleAddStudents}
+      />
+
+      <AssignQuizDialog
+        open={isAssignQuizDialogOpen}
+        teacherClass={isSelectedClassActive ? selectedClass : null}
+        quizzes={assignableQuizzes}
+        onOpenChange={setIsAssignQuizDialogOpen}
+        onAssignQuiz={handleAssignQuiz}
       />
 
       <AlertDialog

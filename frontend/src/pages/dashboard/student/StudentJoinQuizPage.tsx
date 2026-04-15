@@ -2,6 +2,7 @@ import { BookOpen, Hash, Timer } from "../../../components/icons/AppIcons";
 import { useAuth } from "../../../app/providers/AuthProvider";
 import { useTeacherClasses } from "../../../app/providers/TeacherClassesProvider";
 import { useQuizLibrary } from "../../../app/providers/QuizLibraryProvider";
+import { useQuizSessions } from "../../../app/providers/QuizSessionProvider";
 import { cn } from "../../../components/ui/utils";
 import { DashboardPageHeader } from "../../../features/dashboard/components/DashboardPageHeader";
 import {
@@ -15,15 +16,20 @@ import {
 } from "../../../features/dashboard/components/DashboardPrimitives";
 import { EmptyAssignedQuizzesState } from "../../../features/dashboard/components/quiz-library/QuizLibraryComponents";
 import { buildStudentQuizLibrarySources } from "../../../features/dashboard/components/quiz-library/studentQuizLibrarySources";
+import { useQuizLauncher } from "../../../features/quiz-session/useQuizLauncher";
 import { useDashboardPageMeta } from "../../../features/dashboard/hooks/useDashboardPageMeta";
 
-function getAssignedActionLabel(practiceState?: string) {
-  if (practiceState === "completed") {
-    return "View Quiz";
+function getAssignedActionLabel(status: string) {
+  if (status === "completed") {
+    return "View Results";
   }
 
-  if (practiceState === "in-progress") {
+  if (status === "in_progress") {
     return "Continue Quiz";
+  }
+
+  if (status === "expired" || status === "attempts_exhausted") {
+    return "Open Assignment";
   }
 
   return "Start Quiz";
@@ -31,13 +37,21 @@ function getAssignedActionLabel(practiceState?: string) {
 
 export function StudentJoinQuizPage() {
   const meta = useDashboardPageMeta();
-  const { currentStudent } = useAuth();
+  const { currentUser } = useAuth();
   const { classes } = useTeacherClasses();
   const { quizzes } = useQuizLibrary();
+  const { sessions } = useQuizSessions();
+  const { openQuiz } = useQuizLauncher();
+  const studentViewer = currentUser?.role === "student" ? currentUser : null;
+  const studentIdentity = {
+    userId: studentViewer?.id,
+    email: studentViewer?.email,
+  };
   const studentSources = buildStudentQuizLibrarySources(
     classes,
     quizzes,
-    currentStudent?.id,
+    studentIdentity,
+    sessions,
   );
 
   const getAssignedEmptyState = () => {
@@ -135,8 +149,21 @@ export function StudentJoinQuizPage() {
                       {assignment.assignmentContext.className}
                     </p>
                   </div>
-                  <DashboardBadge tone="warning" size="md">
-                    Assigned
+                  <DashboardBadge
+                    tone={
+                      assignment.assignmentState.status === "completed"
+                        ? "success"
+                        : assignment.assignmentState.status === "in_progress"
+                          ? "warning"
+                          : assignment.assignmentState.status === "expired"
+                            ? "danger"
+                            : assignment.assignmentState.status === "attempts_exhausted"
+                              ? "neutral"
+                              : "info"
+                    }
+                    size="md"
+                  >
+                    {assignment.assignmentState.status.replace("_", " ")}
                   </DashboardBadge>
                 </div>
 
@@ -152,8 +179,31 @@ export function StudentJoinQuizPage() {
                   </span>
                 </div>
 
-                <DashboardButton type="button" size="lg" className="mt-5 w-full">
-                  {getAssignedActionLabel(assignment.practiceState)}
+                <DashboardButton
+                  type="button"
+                  size="lg"
+                  className="mt-5 w-full"
+                  onClick={() =>
+                    openQuiz({
+                      quizId: assignment.id,
+                      viewerRole: "student",
+                      assignmentId: assignment.assignmentContext.assignmentId,
+                      preferredSession:
+                        assignment.assignmentState.status === "completed"
+                          ? "completed"
+                          : assignment.assignmentState.status === "in_progress"
+                            ? "in-progress"
+                            : undefined,
+                      navigationState: {
+                        launchSourceType: "join-quiz",
+                        launchSourceLabel: "Assigned quiz launcher",
+                        returnToPath: "/dashboard/student/join-quiz",
+                        returnToLabel: "Back to join quiz",
+                      },
+                    })
+                  }
+                >
+                  {getAssignedActionLabel(assignment.assignmentState.status)}
                   <span className="text-base">{">"}</span>
                 </DashboardButton>
               </article>

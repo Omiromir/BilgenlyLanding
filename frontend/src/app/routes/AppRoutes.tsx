@@ -4,12 +4,14 @@ import { ModeratorDashboardPage } from "../../pages/dashboard/moderator/Moderato
 import { StudentBadgesPage } from "../../pages/dashboard/student/StudentBadgesPage";
 import { StudentGenerateQuizPage } from "../../pages/dashboard/student/StudentGenerateQuizPage";
 import { StudentJoinQuizPage } from "../../pages/dashboard/student/StudentJoinQuizPage";
+import { StudentClassesPage } from "../../pages/dashboard/student/StudentClassesPage";
 import { StudentNotificationsPage } from "../../pages/dashboard/student/StudentNotificationsPage";
 import { StudentOverviewPage } from "../../pages/dashboard/student/StudentOverviewPage";
 import { StudentProfilePage } from "../../pages/dashboard/student/StudentProfilePage";
 import { StudentQuizLibraryPage } from "../../pages/dashboard/student/StudentQuizLibraryPage";
 import { StudentResultsPage } from "../../pages/dashboard/student/StudentResultsPage";
 import { StudentSettingsPage } from "../../pages/dashboard/student/StudentSettingsPage";
+import { QuizSessionPage } from "../../pages/dashboard/shared/QuizSessionPage";
 import { TeacherAnalyticsPage } from "../../pages/dashboard/teacher/TeacherAnalyticsPage";
 import { TeacherClassesPage } from "../../pages/dashboard/teacher/TeacherClassesPage";
 import { TeacherGenerateQuizPage } from "../../pages/dashboard/teacher/TeacherGenerateQuizPage";
@@ -17,6 +19,7 @@ import { TeacherOverviewPage } from "../../pages/dashboard/teacher/TeacherOvervi
 import { TeacherProfilePage } from "../../pages/dashboard/teacher/TeacherProfilePage";
 import { TeacherQuizLibraryPage } from "../../pages/dashboard/teacher/TeacherQuizLibraryPage";
 import { TeacherSettingsPage } from "../../pages/dashboard/teacher/TeacherSettingsPage";
+import { TeacherStudentsPage } from "../../pages/dashboard/teacher/TeacherStudentsPage";
 import { OnboardingPage } from "../../pages/auth/OnboardingPage";
 import { ResetPasswordPage } from "../../pages/auth/ResetPasswordPage";
 import { SignInPage } from "../../pages/auth/SignInPage";
@@ -44,12 +47,17 @@ export function AppRoutes() {
                 path="generate-quiz"
                 element={<TeacherGenerateQuizPage />}
               />
+              <Route
+                path="quizzes/:quizId"
+                element={<QuizSessionPage viewerRole="teacher" />}
+              />
               <Route path="profile" element={<TeacherProfilePage />} />
               <Route
                 path="quiz-library"
                 element={<TeacherQuizLibraryPage />}
               />
               <Route path="classes" element={<TeacherClassesPage />} />
+              <Route path="students" element={<TeacherStudentsPage />} />
               <Route path="analytics" element={<TeacherAnalyticsPage />} />
               <Route path="settings" element={<TeacherSettingsPage />} />
             </Route>
@@ -60,6 +68,7 @@ export function AppRoutes() {
               <Route index element={<Navigate to="overview" replace />} />
               <Route path="overview" element={<StudentOverviewPage />} />
               <Route path="join-quiz" element={<StudentJoinQuizPage />} />
+              <Route path="classes" element={<StudentClassesPage />} />
               <Route
                 path="notifications"
                 element={<StudentNotificationsPage />}
@@ -70,6 +79,10 @@ export function AppRoutes() {
               />
               <Route path="quiz-library" element={<StudentQuizLibraryPage />} />
               <Route path="generate-quiz" element={<StudentGenerateQuizPage />} />
+              <Route
+                path="quizzes/:quizId"
+                element={<QuizSessionPage viewerRole="student" />}
+              />
               <Route path="profile" element={<StudentProfilePage />} />
               <Route path="results" element={<StudentResultsPage />} />
               <Route path="badges" element={<StudentBadgesPage />} />

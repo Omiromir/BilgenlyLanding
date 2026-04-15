@@ -26,6 +26,7 @@ import {
   getNotificationStatusLabel,
   getNotificationStatusTone,
 } from "./notifications/notificationUtils";
+import type { DashboardNotification } from "./notifications/notificationTypes";
 
 interface DashboardHeaderProps {
   onOpenSidebar: () => void;
@@ -34,9 +35,8 @@ interface DashboardHeaderProps {
 export function DashboardHeader({ onOpenSidebar }: DashboardHeaderProps) {
   const { currentUser, role, signOut } = useAuth();
   const {
-    getNotificationsForRecipient,
-    getUnreadCountForRecipient,
-    markAllNotificationsRead,
+    getNotificationsForRecipientIdentity,
+    getUnreadCountForRecipientIdentity,
     markNotificationRead,
   } = useNotifications();
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
@@ -56,15 +56,19 @@ export function DashboardHeader({ onOpenSidebar }: DashboardHeaderProps) {
   }, []);
 
   const recipientUserId = currentUser?.id ?? "";
+  const recipientEmail = currentUser?.email ?? "";
   const notifications = useMemo(
     () =>
       recipientUserId
-        ? getNotificationsForRecipient(recipientUserId).slice(0, 5)
+        ? getNotificationsForRecipientIdentity(
+            recipientUserId,
+            recipientEmail,
+          ).slice(0, 5)
         : [],
-    [getNotificationsForRecipient, recipientUserId],
+    [getNotificationsForRecipientIdentity, recipientEmail, recipientUserId],
   );
   const unreadCount = recipientUserId
-    ? getUnreadCountForRecipient(recipientUserId)
+    ? getUnreadCountForRecipientIdentity(recipientUserId, recipientEmail)
     : 0;
 
   const userMeta = useMemo(() => {
@@ -102,6 +106,8 @@ export function DashboardHeader({ onOpenSidebar }: DashboardHeaderProps) {
         };
     }
   }, [currentUser, role]);
+  const notificationsPath =
+    role === "student" ? "/dashboard/student/notifications" : userMeta.settingsPath;
 
   const initials = userMeta.name
     .split(" ")
@@ -200,9 +206,9 @@ export function DashboardHeader({ onOpenSidebar }: DashboardHeaderProps) {
                 <button
                   type="button"
                   onClick={() => {
-                    if (recipientUserId) {
-                      markAllNotificationsRead(recipientUserId);
-                    }
+                    notifications.forEach((notification) =>
+                      markNotificationRead(notification.id),
+                    );
                   }}
                   className="pt-1 text-sm font-medium text-[var(--dashboard-brand)] transition hover:text-[var(--dashboard-brand-strong)] disabled:cursor-not-allowed disabled:opacity-50"
                   disabled={!recipientUserId || unreadCount === 0}
@@ -227,11 +233,11 @@ export function DashboardHeader({ onOpenSidebar }: DashboardHeaderProps) {
                       <div className="flex items-start gap-3">
                         <div
                           className={dashboardIconChipVariants({
-                            tone: getNotificationStatusTone(notification.status),
+                            tone: getNotificationStatusTone(notification),
                             size: "md",
                           })}
                         >
-                          <NotificationIcon status={notification.status} />
+                          <NotificationIcon notification={notification} />
                         </div>
 
                         <div className="min-w-0 flex-1">
@@ -245,11 +251,9 @@ export function DashboardHeader({ onOpenSidebar }: DashboardHeaderProps) {
                                   <span className="h-2 w-2 rounded-full bg-[var(--dashboard-brand)]" />
                                 ) : null}
                                 <DashboardBadge
-                                  tone={getNotificationStatusTone(
-                                    notification.status,
-                                  )}
+                                  tone={getNotificationStatusTone(notification)}
                                 >
-                                  {getNotificationStatusLabel(notification.status)}
+                                  {getNotificationStatusLabel(notification)}
                                 </DashboardBadge>
                               </div>
                               <p className="mt-1 text-[15px] leading-6 text-[var(--dashboard-text-soft)]">
@@ -285,7 +289,7 @@ export function DashboardHeader({ onOpenSidebar }: DashboardHeaderProps) {
               </div>
 
               <Link
-                to="/dashboard/student/notifications"
+                to={notificationsPath}
                 className={cn(
                   "block w-full border-t px-5 py-4 text-center text-[15px] font-semibold text-[var(--dashboard-brand)] transition hover:bg-[var(--dashboard-surface-muted)]",
                   dashboardSectionDividerClassName,
@@ -360,15 +364,21 @@ export function DashboardHeader({ onOpenSidebar }: DashboardHeaderProps) {
 }
 
 function NotificationIcon({
-  status,
+  notification,
 }: {
-  status: "pending" | "accepted" | "declined";
+  notification: DashboardNotification;
 }) {
-  switch (status) {
+  if (notification.type === "quiz_follow_up") {
+    return <Bell className="h-4 w-4" />;
+  }
+
+  switch (notification.status) {
     case "accepted":
       return <CircleCheckBig className="h-4 w-4" />;
     case "declined":
       return <CircleAlert className="h-4 w-4" />;
+    case "removed":
+      return <Info className="h-4 w-4" />;
     case "pending":
     default:
       return <Info className="h-4 w-4" />;

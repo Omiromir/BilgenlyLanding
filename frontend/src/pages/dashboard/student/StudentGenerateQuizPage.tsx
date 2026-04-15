@@ -4,7 +4,7 @@ export function StudentGenerateQuizPage() {
   return (
     <QuizBuilderWorkspace
       mode="student"
-      title="Generate Self-Study Quiz"
+      title="Generate Quiz"
       subtitle="Turn your notes, readings, or revision summaries into a personal practice quiz you can review and run yourself."
     />
   );
