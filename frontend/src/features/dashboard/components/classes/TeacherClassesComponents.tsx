@@ -73,6 +73,10 @@ import {
 } from "./teacherClassesUtils";
 import { normalizeEmail, validateEmail } from "../../../auth/validation";
 import type { QuizLibraryItem } from "../quiz-library/quizLibraryTypes";
+import {
+  buildQuizJoinCode,
+  formatQuizJoinCode,
+} from "../../../quiz-session/quizJoinCode";
 
 const teacherClassStatusToneMap = {
   active: "success",
@@ -1041,6 +1045,16 @@ export function TeacherClassDetailsPanel({
                       expired={getAssignmentLevelStatus(quiz) === "expired"}
                     />
                     <AttemptsBadge maxAttempts={quiz.maxAttempts} />
+                    <DashboardBadge tone="brand">
+                      Join code{" "}
+                      {formatQuizJoinCode(
+                        buildQuizJoinCode({
+                          assignmentId: quiz.assignmentId,
+                          classId: teacherClass.id,
+                          quizId: quiz.quizId,
+                        }),
+                      )}
+                    </DashboardBadge>
                     <DashboardBadge tone="neutral">
                       {assignmentInsights[quiz.assignmentId]?.attemptedStudentsCount ?? 0} students attempted
                     </DashboardBadge>
