@@ -4,9 +4,7 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="37e77280-3310-410b-8349-e976186d2718" name="Changes" comment="Profile page">
-      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-    </list>
+    <list default="true" id="37e77280-3310-410b-8349-e976186d2718" name="Changes" comment="Profile page" />
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -46,6 +44,7 @@
   <component name="PropertiesComponent"><![CDATA[{
   "keyToString": {
     "ModuleVcsDetector.initialDetectionPerformed": "true",
+    "Node.js.assignmentConstraints.ts.executor": "Run",
     "Node.js.types.ts.executor": "Run",
     "RunOnceActivity.ShowReadmeOnStart": "true",
     "RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252": "true",
@@ -80,6 +79,7 @@
       <workItem from="1774582929342" duration="17535000" />
       <workItem from="1774845680066" duration="128000" />
       <workItem from="1775633356486" duration="4568000" />
+      <workItem from="1776754572043" duration="2133000" />
     </task>
     <task id="LOCAL-00001" summary="Integration with back">
       <option name="closed" value="true" />
@@ -133,7 +133,6 @@
         <line-breakpoint enabled="true" type="javascript">
           <url>file://$PROJECT_DIR$/frontend/src/app/providers/NotificationsProvider.tsx</url>
           <line>38</line>
-          <properties lambdaOrdinal="-1" />
           <option name="timeStamp" value="1" />
         </line-breakpoint>
       </breakpoints>
