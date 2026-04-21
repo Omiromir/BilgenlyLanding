@@ -634,7 +634,6 @@ export function QuizBuilderWorkspace({
         : [
             `Title: ${payload.title}`,
             `Topic: ${payload.topic}`,
-            `Difficulty: ${payload.difficulty}`,
             `Visibility: ${payload.visibility}`,
             "",
             ...payload.questions.flatMap((question, index) => [

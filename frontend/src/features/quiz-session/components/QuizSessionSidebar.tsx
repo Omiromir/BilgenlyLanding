@@ -2,7 +2,6 @@ import {
   BookOpen,
   CheckCircle2,
   Clock3,
-  Sparkles,
 } from "../../../components/icons/AppIcons";
 import {
   AttemptProgressIndicator,
@@ -61,9 +60,6 @@ export function QuizSessionSidebar({
         </div>
 
         <div className="flex flex-wrap gap-2">
-          <DashboardBadge tone="white" size="md">
-            {session.quiz.difficulty}
-          </DashboardBadge>
           <DashboardBadge tone="white" size="md">
             {session.quiz.language}
           </DashboardBadge>

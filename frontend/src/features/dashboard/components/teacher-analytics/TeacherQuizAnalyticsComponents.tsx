@@ -200,6 +200,7 @@ interface ClassQuizAnalyticsCardProps {
   helper: string;
   icon: typeof TrendingUp;
   tone?: "brand" | "accent" | "success" | "warning";
+  className?: string;
 }
 
 export function ClassQuizAnalyticsCard({
@@ -208,22 +209,35 @@ export function ClassQuizAnalyticsCard({
   helper,
   icon: Icon,
   tone = "brand",
+  className,
 }: ClassQuizAnalyticsCardProps) {
   return (
-    <DashboardSurface radius="xl" padding="md" className="space-y-4">
+    <DashboardSurface
+      radius="xl"
+      padding="md"
+      className={cn(
+        "space-y-5 border-white/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(247,249,254,0.92))] shadow-[0_20px_45px_rgba(18,32,58,0.08)]",
+        className,
+      )}
+    >
       <div className="flex items-start justify-between gap-4">
         <div className="space-y-2">
-          <p className={dashboardMetaTextClassName}>{title}</p>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[var(--dashboard-text-faint)]">
+            {title}
+          </p>
           <p className="text-[2.2rem] font-semibold tracking-tight text-[var(--dashboard-text-strong)]">
             {value}
           </p>
-          <p className="text-sm leading-6 text-[var(--dashboard-text-soft)]">{helper}</p>
         </div>
 
         <div className={dashboardIconChipVariants({ tone, size: "lg" })}>
           <Icon className="h-6 w-6" />
         </div>
       </div>
+
+      <div className="h-px bg-[linear-gradient(90deg,rgba(91,76,240,0.16),rgba(91,76,240,0))]" />
+
+      <p className="text-sm leading-6 text-[var(--dashboard-text-soft)]">{helper}</p>
     </DashboardSurface>
   );
 }
@@ -290,8 +304,9 @@ export function StudentQuizResultRow({
   return (
     <TableRow
       className={cn(
-        "cursor-pointer border-[var(--dashboard-border-soft)] bg-white hover:bg-[var(--dashboard-surface-muted)]/65",
-        isSelected && "bg-[var(--dashboard-brand-soft-alt)]/50",
+        "cursor-pointer border-[var(--dashboard-border-soft)] bg-white transition-colors hover:bg-[var(--dashboard-surface-muted)]/65",
+        isSelected &&
+          "bg-[var(--dashboard-brand-soft-alt)]/70 shadow-[inset_3px_0_0_0_var(--dashboard-brand)]",
       )}
       onClick={onSelect}
     >
@@ -339,7 +354,7 @@ export function StudentQuizResultRow({
             {row.latestScore === null ? "--" : `${row.latestScore}%`}
           </p>
           <p className="text-xs text-[var(--dashboard-text-soft)]">
-            Best {row.bestScore === null ? "--" : `${row.bestScore}%`} · {row.attemptsUsed} attempts
+            Best {row.bestScore === null ? "--" : `${row.bestScore}%`} | {row.attemptsUsed} attempts
           </p>
         </div>
       </TableCell>
@@ -696,43 +711,69 @@ export function StudentQuizInsightsPanel({
     <DashboardSurface
       radius="xl"
       padding="md"
-      className="space-y-5 xl:sticky xl:top-6 xl:max-h-[calc(100vh-7rem)] xl:overflow-y-auto"
+      className="space-y-5 border-white/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(247,249,254,0.94))] shadow-[0_24px_52px_rgba(18,32,58,0.08)] xl:sticky xl:top-6 xl:max-h-[calc(100vh-7rem)] xl:overflow-y-auto"
     >
-      <div className="flex items-start gap-4">
-        <Avatar className="h-14 w-14 border border-[var(--dashboard-border-soft)] bg-[var(--dashboard-brand-soft-alt)]">
-          <AvatarFallback className="bg-[var(--dashboard-brand-soft-alt)] text-base font-semibold text-[var(--dashboard-brand)]">
-            {getInitials(row.student.fullName)}
-          </AvatarFallback>
-        </Avatar>
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <h3 className="text-[1.3rem] font-semibold text-[var(--dashboard-text-strong)]">
-              {row.student.fullName}
-            </h3>
-            <DashboardBadge tone={getStudentStatusTone(row.status)}>
-              {getStudentStatusLabel(row.status)}
-            </DashboardBadge>
-            {row.missedDeadline ? (
-              <DashboardBadge tone="danger">Missed deadline</DashboardBadge>
-            ) : null}
-            {row.exhaustedAttempts ? (
-              <DashboardBadge tone="neutral">Attempts used up</DashboardBadge>
-            ) : null}
-            {row.flags.map((flag) => (
-              <DashboardBadge
-                key={`${row.rowId}-${flag}`}
-                tone={flag === "At Risk" ? "danger" : "warning"}
-              >
-                {flag}
+      <div className="rounded-[24px] border border-[var(--dashboard-border-soft)] bg-[linear-gradient(135deg,rgba(239,246,255,0.98),rgba(255,255,255,0.92))] p-5">
+        <div className="flex items-start gap-4">
+          <Avatar className="h-14 w-14 border border-[var(--dashboard-border-soft)] bg-[var(--dashboard-brand-soft-alt)]">
+            <AvatarFallback className="bg-[var(--dashboard-brand-soft-alt)] text-base font-semibold text-[var(--dashboard-brand)]">
+              {getInitials(row.student.fullName)}
+            </AvatarFallback>
+          </Avatar>
+          <div className="min-w-0 flex-1">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[var(--dashboard-text-faint)]">
+              Student review
+            </p>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <h3 className="text-[1.3rem] font-semibold text-[var(--dashboard-text-strong)]">
+                {row.student.fullName}
+              </h3>
+              <DashboardBadge tone={getStudentStatusTone(row.status)}>
+                {getStudentStatusLabel(row.status)}
               </DashboardBadge>
-            ))}
+              {row.missedDeadline ? (
+                <DashboardBadge tone="danger">Missed deadline</DashboardBadge>
+              ) : null}
+              {row.exhaustedAttempts ? (
+                <DashboardBadge tone="neutral">Attempts used up</DashboardBadge>
+              ) : null}
+              {row.flags.map((flag) => (
+                <DashboardBadge
+                  key={`${row.rowId}-${flag}`}
+                  tone={flag === "At Risk" ? "danger" : "warning"}
+                >
+                  {flag}
+                </DashboardBadge>
+              ))}
+            </div>
+            <p className="mt-1 text-sm text-[var(--dashboard-text-soft)]">
+              {row.student.email}
+            </p>
+            <p className="mt-2 text-sm leading-6 text-[var(--dashboard-text-soft)]">
+              Assigned quiz: <span className="font-medium text-[var(--dashboard-text-strong)]">{assignment.title}</span>
+            </p>
           </div>
-          <p className="mt-1 text-sm text-[var(--dashboard-text-soft)]">
-            {row.student.email}
-          </p>
-          <p className="mt-2 text-sm leading-6 text-[var(--dashboard-text-soft)]">
-            {assignment.title}
-          </p>
+        </div>
+
+        <div className="mt-5 grid gap-3 sm:grid-cols-3">
+          <div className={dashboardInsetBlockClassName}>
+            <p className={dashboardMetaTextClassName}>Latest score</p>
+            <p className="mt-1 font-semibold text-[var(--dashboard-text-strong)]">
+              {row.latestScore === null ? "--" : `${row.latestScore}%`}
+            </p>
+          </div>
+          <div className={dashboardInsetBlockClassName}>
+            <p className={dashboardMetaTextClassName}>Best score</p>
+            <p className="mt-1 font-semibold text-[var(--dashboard-text-strong)]">
+              {row.bestScore === null ? "--" : `${row.bestScore}%`}
+            </p>
+          </div>
+          <div className={dashboardInsetBlockClassName}>
+            <p className={dashboardMetaTextClassName}>Attempts used</p>
+            <p className="mt-1 font-semibold text-[var(--dashboard-text-strong)]">
+              {row.attemptsUsed}
+            </p>
+          </div>
         </div>
       </div>
 
@@ -763,7 +804,7 @@ export function StudentQuizInsightsPanel({
         }
         className="space-y-4"
       >
-        <TabsList className="grid h-auto w-full grid-cols-3 rounded-[18px] bg-[var(--dashboard-surface-muted)] p-1">
+        <TabsList className="grid h-auto w-full grid-cols-3 rounded-[20px] border border-[var(--dashboard-border-soft)] bg-[var(--dashboard-bg-elevated)]/95 p-1.5 shadow-[0_16px_32px_rgba(18,32,58,0.05)]">
           <TabsTrigger value="overview" className="rounded-[14px]">
             Overview
           </TabsTrigger>
@@ -776,7 +817,7 @@ export function StudentQuizInsightsPanel({
         </TabsList>
 
         <TabsContent value="overview" className="space-y-4">
-          <div className="grid gap-3 md:grid-cols-2">
+          <div className="grid gap-3 md:grid-cols-3">
             <div className={dashboardInsetBlockClassName}>
               <p className={dashboardMetaTextClassName}>Latest completion</p>
               <p className="mt-1 font-semibold text-[var(--dashboard-text-strong)]">
@@ -784,24 +825,17 @@ export function StudentQuizInsightsPanel({
               </p>
             </div>
             <div className={dashboardInsetBlockClassName}>
-              <p className={dashboardMetaTextClassName}>Latest score</p>
+              <p className={dashboardMetaTextClassName}>Average score</p>
               <p className="mt-1 font-semibold text-[var(--dashboard-text-strong)]">
-                {row.latestScore === null ? "--" : `${row.latestScore}%`}
-              </p>
-            </div>
-          </div>
-
-          <div className="grid gap-3 md:grid-cols-2">
-            <div className={dashboardInsetBlockClassName}>
-              <p className={dashboardMetaTextClassName}>Attempts</p>
-              <p className="mt-1 font-semibold text-[var(--dashboard-text-strong)]">
-                {row.attemptsUsed}
+                {row.averageScore === null ? "--" : `${row.averageScore}%`}
               </p>
             </div>
             <div className={dashboardInsetBlockClassName}>
-              <p className={dashboardMetaTextClassName}>Best score</p>
+              <p className={dashboardMetaTextClassName}>Accuracy</p>
               <p className="mt-1 font-semibold text-[var(--dashboard-text-strong)]">
-                {row.bestScore === null ? "--" : `${row.bestScore}%`}
+                {row.status === "completed"
+                  ? `${row.correctCount}/${row.totalQuestions} correct`
+                  : "--"}
               </p>
             </div>
           </div>

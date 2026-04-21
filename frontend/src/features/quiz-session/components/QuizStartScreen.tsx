@@ -3,7 +3,6 @@ import {
   BookOpen,
   Clock3,
   Play,
-  Sparkles,
   UserRound,
 } from "../../../components/icons/AppIcons";
 import {
@@ -140,7 +139,7 @@ export function QuizStartScreen({
           ) : null}
         </div>
 
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           <div className="rounded-[22px] border border-[var(--dashboard-border-soft)] bg-white px-5 py-4">
             <p className={dashboardIconTextRowClassName}>
               <BookOpen className="h-4 w-4" />
@@ -157,15 +156,6 @@ export function QuizStartScreen({
             </p>
             <p className="mt-3 text-[1.5rem] font-semibold text-[var(--dashboard-text-strong)]">
               {quiz.durationMinutes} min
-            </p>
-          </div>
-          <div className="rounded-[22px] border border-[var(--dashboard-border-soft)] bg-white px-5 py-4">
-            <p className={dashboardIconTextRowClassName}>
-              <Sparkles className="h-4 w-4" />
-              Difficulty
-            </p>
-            <p className="mt-3 text-[1.5rem] font-semibold text-[var(--dashboard-text-strong)]">
-              {quiz.difficulty}
             </p>
           </div>
           <div className="rounded-[22px] border border-[var(--dashboard-border-soft)] bg-white px-5 py-4">

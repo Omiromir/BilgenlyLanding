@@ -355,7 +355,7 @@ export function QuizCard({
 
         <div className="mt-5">
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--dashboard-text-faint)]">
-            {item.topic} / {item.difficulty}
+            {item.topic}
           </p>
           <h3 className="mt-3 text-[1.2rem] font-semibold text-[var(--dashboard-text-strong)]">
             {item.title}
@@ -431,7 +431,7 @@ export function AssignedQuizCard({
 
         <div className="mt-5">
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--dashboard-text-faint)]">
-            {item.topic} / {item.difficulty}
+            {item.topic}
           </p>
           <h3 className="mt-3 text-[1.2rem] font-semibold text-[var(--dashboard-text-strong)]">
             {item.title}
