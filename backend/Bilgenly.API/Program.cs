@@ -74,7 +74,7 @@ builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowFrontend", policy =>
     {
-        policy.WithOrigins("http://localhost:5173", "https://your-frontend-domain.com")
+        policy.WithOrigins("http://localhost:5173", "https://bilgenly.vercel.app")
               .AllowAnyHeader()
               .AllowAnyMethod();
     });
