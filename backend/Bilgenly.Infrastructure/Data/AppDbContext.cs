@@ -10,6 +10,9 @@ public class AppDbContext : DbContext
     public DbSet<Quiz> Quizzes => Set<Quiz>();
     public DbSet<Attempt> Attempts => Set<Attempt>();
     public DbSet<AttemptAnswer> AttemptAnswers => Set<AttemptAnswer>();
+    public DbSet<Class> Classes => Set<Class>();
+    public DbSet<ClassStudent> ClassStudents => Set<ClassStudent>();
+    public DbSet<ClassQuiz> ClassQuizzes => Set<ClassQuiz>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -36,6 +39,36 @@ public class AppDbContext : DbContext
             e.HasMany(a => a.AttemptAnswers)
                 .WithOne(aa => aa.Attempt)
                 .HasForeignKey(aa => aa.AttemptId);
+        });
+        modelBuilder.Entity<ClassStudent>(e =>
+        {
+            e.HasKey(cs => new { cs.ClassId, cs.StudentId }); 
+            e.HasOne(cs => cs.Class)
+                .WithMany(c => c.ClassStudents)
+                .HasForeignKey(cs => cs.ClassId);
+            e.HasOne(cs => cs.Student)
+                .WithMany()
+                .HasForeignKey(cs => cs.StudentId);
+        });
+
+        modelBuilder.Entity<ClassQuiz>(e =>
+        {
+            e.HasKey(cq => new { cq.ClassId, cq.QuizId }); 
+            e.HasOne(cq => cq.Class)
+                .WithMany(c => c.ClassQuizzes)
+                .HasForeignKey(cq => cq.ClassId);
+            e.HasOne(cq => cq.Quiz)
+                .WithMany()
+                .HasForeignKey(cq => cq.QuizId);
+        });
+
+        modelBuilder.Entity<Class>(e =>
+        {
+            e.HasKey(c => c.Id);
+            e.HasIndex(c => c.InviteCode).IsUnique();
+            e.HasOne(c => c.Teacher)
+                .WithMany()
+                .HasForeignKey(c => c.TeacherId);
         });
     }
     

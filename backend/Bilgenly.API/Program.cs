@@ -66,6 +66,8 @@ builder.Services.AddScoped<QuizService>();
 builder.Services.AddScoped<IAttemptRepository, AttemptRepository>();
 builder.Services.AddScoped<AttemptService>();
 builder.Services.AddScoped<AnalyticsService>();
+builder.Services.AddScoped<IClassRepository, ClassRepository>();
+builder.Services.AddScoped<ClassService>();
 builder.Services.AddControllers();
 
 builder.Services.AddCors(options =>
