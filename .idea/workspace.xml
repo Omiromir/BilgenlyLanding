@@ -5,21 +5,7 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="37e77280-3310-410b-8349-e976186d2718" name="Changes" comment="Profile page">
-      <change afterPath="$PROJECT_DIR$/backend/Bilgenly.API/Controllers/ClassController.cs" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/backend/Bilgenly.Application/DTOs/ClassDto.cs" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/backend/Bilgenly.Application/DTOs/ClassQuizDto.cs" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/backend/Bilgenly.Application/DTOs/ClassStudentDto.cs" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/backend/Bilgenly.Application/DTOs/CreateClassDto.cs" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/backend/Bilgenly.Application/Interfaces/IClassRepository.cs" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/backend/Bilgenly.Application/Services/ClassService.cs" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/backend/Bilgenly.Domain/Entities/Class.cs" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/backend/Bilgenly.Domain/Entities/ClassQuiz.cs" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/backend/Bilgenly.Domain/Entities/ClassStudent.cs" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/backend/Bilgenly.Infrastructure/Repositories/ClassRepository.cs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/Bilgenly.API/Program.cs" beforeDir="false" afterPath="$PROJECT_DIR$/backend/Bilgenly.API/Program.cs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/Bilgenly.Infrastructure/Data/AppDbContext.cs" beforeDir="false" afterPath="$PROJECT_DIR$/backend/Bilgenly.Infrastructure/Data/AppDbContext.cs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/Bilgenly.Infrastructure/Migrations/AppDbContextModelSnapshot.cs" beforeDir="false" afterPath="$PROJECT_DIR$/backend/Bilgenly.Infrastructure/Migrations/AppDbContextModelSnapshot.cs" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -97,7 +83,8 @@
       <workItem from="1775633356486" duration="4568000" />
       <workItem from="1776754572043" duration="2133000" />
       <workItem from="1777312750654" duration="1886000" />
-      <workItem from="1777478294991" duration="2252000" />
+      <workItem from="1777478294991" duration="2688000" />
+      <workItem from="1777822198325" duration="2089000" />
     </task>
     <task id="LOCAL-00001" summary="Integration with back">
       <option name="closed" value="true" />
