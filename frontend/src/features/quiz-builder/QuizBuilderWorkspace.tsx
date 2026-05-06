@@ -58,6 +58,7 @@ import type {
   GenerationState,
   ParsedSource,
   QuestionAnswerOrder,
+  QuizExportFormat,
   QuestionType,
   ValidationIssue,
   WorkspaceStage,
@@ -81,6 +82,117 @@ import type {
   QuizLibraryVisibility,
   QuizQuestionRecord,
 } from "../dashboard/components/quiz-library/quizLibraryTypes";
+
+function escapeXml(value: string | number | undefined) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+
+function getMoodleCorrectIndexes(question: QuizQuestionRecord) {
+  return question.selectionMode === "multiple" && question.correctIndexes?.length
+    ? question.correctIndexes
+    : [question.correctIndex];
+}
+
+function buildMoodleAnswerXml(
+  answerText: string,
+  fraction: number,
+  explanation: string | undefined,
+  indent = "    ",
+) {
+  return [
+    `${indent}<answer fraction="${escapeXml(fraction.toFixed(5))}" format="html">`,
+    `${indent}  <text>${escapeXml(answerText)}</text>`,
+    `${indent}  <feedback format="html">`,
+    `${indent}    <text>${fraction > 0 ? escapeXml(explanation) : ""}</text>`,
+    `${indent}  </feedback>`,
+    `${indent}</answer>`,
+  ].join("\n");
+}
+
+function buildMoodleQuestionXml(question: QuizQuestionRecord, index: number) {
+  const correctIndexes = getMoodleCorrectIndexes(question);
+  const points = Math.max(1, Math.round(question.points ?? 1));
+  const baseRows = [
+    `  <name>`,
+    `    <text>${escapeXml(`Question ${index + 1}`)}</text>`,
+    `  </name>`,
+    `  <questiontext format="html">`,
+    `    <text>${escapeXml(question.text)}</text>`,
+    `  </questiontext>`,
+    `  <generalfeedback format="html">`,
+    `    <text>${escapeXml(question.explanation)}</text>`,
+    `  </generalfeedback>`,
+    `  <defaultgrade>${points.toFixed(7)}</defaultgrade>`,
+    `  <penalty>0.3333333</penalty>`,
+    `  <hidden>0</hidden>`,
+    `  <idnumber>${escapeXml(question.id)}</idnumber>`,
+  ];
+
+  if (question.questionType === "True/False") {
+    const trueIsCorrect = correctIndexes.includes(0);
+
+    return [
+      `<question type="truefalse">`,
+      ...baseRows,
+      buildMoodleAnswerXml("true", trueIsCorrect ? 100 : 0, question.explanation),
+      buildMoodleAnswerXml("false", trueIsCorrect ? 0 : 100, question.explanation),
+      `</question>`,
+    ].join("\n");
+  }
+
+  const correctCount = Math.max(1, correctIndexes.length);
+  const correctFraction =
+    question.selectionMode === "multiple" ? 100 / correctCount : 100;
+
+  return [
+    `<question type="multichoice">`,
+    ...baseRows,
+    `  <single>${question.selectionMode === "multiple" ? "false" : "true"}</single>`,
+    `  <shuffleanswers>${question.answerOrder === "shuffle" ? "true" : "false"}</shuffleanswers>`,
+    `  <answernumbering>abc</answernumbering>`,
+    ...question.options.map((option, optionIndex) =>
+      buildMoodleAnswerXml(
+        option,
+        correctIndexes.includes(optionIndex) ? correctFraction : 0,
+        question.explanation,
+      ),
+    ),
+    `</question>`,
+  ].join("\n");
+}
+
+function buildMoodleQuizXml(payload: {
+  title: string;
+  topic: string;
+  questions: QuizQuestionRecord[];
+}) {
+  return [
+    `<?xml version="1.0" encoding="UTF-8"?>`,
+    `<quiz>`,
+    `<question type="category">`,
+    `  <category>`,
+    `    <text>${escapeXml(`$course$/top/${payload.title}`)}</text>`,
+    `  </category>`,
+    `</question>`,
+    `<question type="description">`,
+    `  <name>`,
+    `    <text>${escapeXml(payload.title)}</text>`,
+    `  </name>`,
+    `  <questiontext format="html">`,
+    `    <text>${escapeXml(payload.topic)}</text>`,
+    `  </questiontext>`,
+    `</question>`,
+    ...payload.questions.map((question, index) =>
+      buildMoodleQuestionXml(question, index),
+    ),
+    `</quiz>`,
+  ].join("\n\n");
+}
 
 export function QuizBuilderWorkspace({
   mode,
@@ -616,7 +728,7 @@ export function QuizBuilderWorkspace({
     handleRegenerateQuestion(questionId);
   }
 
-  function handleDownloadQuizExport(format: "json" | "txt") {
+  function handleDownloadQuizExport(format: QuizExportFormat) {
     const payload = buildQuizSavePayload("draft");
 
     if (!payload) {
@@ -631,7 +743,9 @@ export function QuizBuilderWorkspace({
     const content =
       format === "json"
         ? JSON.stringify(payload, null, 2)
-        : [
+        : format === "xml"
+          ? buildMoodleQuizXml(payload)
+          : [
             `Title: ${payload.title}`,
             `Topic: ${payload.topic}`,
             `Visibility: ${payload.visibility}`,
@@ -655,12 +769,17 @@ export function QuizBuilderWorkspace({
           ].join("\n");
 
     const blob = new Blob([content], {
-      type: format === "json" ? "application/json" : "text/plain",
+      type:
+        format === "json"
+          ? "application/json"
+          : format === "xml"
+            ? "application/xml"
+            : "text/plain",
     });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `${fileName}.${format === "json" ? "json" : "txt"}`;
+    link.download = `${fileName}.${format}`;
     document.body.appendChild(link);
     link.click();
     link.remove();
