@@ -48,6 +48,7 @@ import {
 import { getRequestErrorMessage, isGuidString } from "../../lib/apiClient";
 import type { UserRole } from "../../features/auth/api";
 import { useAuth } from "./AuthProvider";
+import { sendClassInvitations } from "../../features/dashboard/api/classInvitationsApi";
 import {
   getUserScopedStorageKey,
   getUserStorageScope,
@@ -753,6 +754,13 @@ export function TeacherClassesProvider({
             studentEmail: student.email,
           });
         });
+
+        if (isGuidString(classId)) {
+          sendClassInvitations(
+            classId,
+            newStudents.map((s) => s.email),
+          ).catch(() => {});
+        }
 
         return newStudents;
       },

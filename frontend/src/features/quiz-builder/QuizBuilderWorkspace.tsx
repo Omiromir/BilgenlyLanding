@@ -24,7 +24,6 @@ import {
   RefreshCw,
   Save,
   Trash2,
-  Wand2,
   XCircle,
 } from "../../components/icons/AppIcons";
 import { AnimatePresence, motion } from "motion/react";
@@ -99,8 +98,15 @@ function escapeXml(value: string | number | undefined) {
 }
 
 function getMoodleCorrectIndexes(question: QuizQuestionRecord) {
-  return question.selectionMode === "multiple" && question.correctIndexes?.length
+  return question.selectionMode === "multiple" &&
+    question.correctIndexes?.length
     ? question.correctIndexes
+    : [question.correctIndex];
+}
+
+function getQuizRecordCorrectIndexes(question: QuizQuestionRecord) {
+  return question.selectionMode === "multiple" && question.correctIndexes?.length
+    ? [...question.correctIndexes].sort((left, right) => left - right)
     : [question.correctIndex];
 }
 
@@ -145,8 +151,16 @@ function buildMoodleQuestionXml(question: QuizQuestionRecord, index: number) {
     return [
       `<question type="truefalse">`,
       ...baseRows,
-      buildMoodleAnswerXml("true", trueIsCorrect ? 100 : 0, question.explanation),
-      buildMoodleAnswerXml("false", trueIsCorrect ? 0 : 100, question.explanation),
+      buildMoodleAnswerXml(
+        "true",
+        trueIsCorrect ? 100 : 0,
+        question.explanation,
+      ),
+      buildMoodleAnswerXml(
+        "false",
+        trueIsCorrect ? 0 : 100,
+        question.explanation,
+      ),
       `</question>`,
     ].join("\n");
   }
@@ -211,11 +225,14 @@ function mapGeneratedResultToQuestions(
         .map((answer, answerIndex) => (answer.isCorrect ? answerIndex : -1))
         .filter((answerIndex) => answerIndex >= 0);
       const questionType =
-        question.questionType === "TrueFalse" ? "True/False" : "Multiple choice";
+        question.questionType === "TrueFalse"
+          ? "True/False"
+          : "Multiple choice";
       const selectionMode = correctIndexes.length > 1 ? "multiple" : "single";
 
       return {
         id: question.id,
+        optionIds: question.answers.map((answer) => answer.id),
         questionType,
         selectionMode,
         text: question.text,
@@ -233,6 +250,31 @@ function mapGeneratedResultToQuestions(
         status: index < 2 ? "unreviewed" : "needs attention",
       } satisfies GeneratedQuestion;
     });
+}
+
+function mapGeneratedQuestionToQuizQuestionRecord(
+  question: GeneratedQuestion,
+): QuizQuestionRecord {
+  return {
+    id: question.id,
+    text: question.text.trim(),
+    options: question.options.map((option) => option.trim()),
+    optionIds: question.optionIds ? [...question.optionIds] : undefined,
+    correctIndex: question.correctIndex,
+    correctIndexes:
+      question.selectionMode === "multiple"
+        ? getQuestionCorrectIndexes(question)
+        : undefined,
+    questionType: question.questionType,
+    selectionMode: question.selectionMode,
+    explanation: question.explanation.trim() || undefined,
+    imageEnabled: question.imageEnabled,
+    imageUrl: question.imageUrl,
+    points: Math.max(1, Math.round(question.points)),
+    estimatedMinutes: Math.max(1, Math.round(question.estimatedMinutes)),
+    answerOrder: question.answerOrder,
+    required: question.required,
+  };
 }
 
 export function QuizBuilderWorkspace({
@@ -281,9 +323,10 @@ export function QuizBuilderWorkspace({
     string | null
   >(null);
   const [questionSeed, setQuestionSeed] = useState(0);
-  const [generatedBackendQuizId, setGeneratedBackendQuizId] = useState<string | null>(
-    null,
-  );
+  const [generatedBackendQuizId, setGeneratedBackendQuizId] = useState<
+    string | null
+  >(null);
+  const [quizDescription, setQuizDescription] = useState<string>("");
   const [reviewSearch, setReviewSearch] = useState("");
   const [publishVisibility, setPublishVisibility] =
     useState<QuizLibraryVisibility>("private");
@@ -313,7 +356,8 @@ export function QuizBuilderWorkspace({
       : true) &&
     generationState !== "running";
   const resolvedQuizTitle =
-    quizTitle.trim() || (mode === "student" ? `${focus || "Personal"} Practice Quiz` : "");
+    quizTitle.trim() ||
+    (mode === "student" ? `${focus || "Personal"} Practice Quiz` : "");
   const deferredReviewSearch = useDeferredValue(reviewSearch);
   const selectedQuestion =
     questions.find((question) => question.id === selectedQuestionId) ??
@@ -381,6 +425,7 @@ export function QuizBuilderWorkspace({
     }
 
     setQuizTitle(editingQuiz.title);
+    setQuizDescription(editingQuiz.description ?? "");
     setQuestionCount(editingQuiz.questionCount);
     setFocus(editingQuiz.topic);
     setPublishVisibility(editingQuiz.visibility);
@@ -388,6 +433,7 @@ export function QuizBuilderWorkspace({
       editingQuiz.questions.map((question) => ({
         ...question,
         questionType: question.questionType ?? "Multiple choice",
+        optionIds: question.optionIds ? [...question.optionIds] : undefined,
         selectionMode: question.selectionMode ?? "single",
         options: [...question.options],
         correctIndexes:
@@ -525,7 +571,8 @@ export function QuizBuilderWorkspace({
 
       try {
         const questionType =
-          questionTypes.includes("True/False") && !questionTypes.includes("Multiple choice")
+          questionTypes.includes("True/False") &&
+          !questionTypes.includes("Multiple choice")
             ? "TrueFalse"
             : "MCQ";
         const request = {
@@ -535,7 +582,10 @@ export function QuizBuilderWorkspace({
           questionCount,
           questionType,
           additionalInstructions: instructions,
-          text: activeInput === "paste" ? parsedSource?.extractedText ?? "" : undefined,
+          text:
+            activeInput === "paste"
+              ? (parsedSource?.extractedText ?? "")
+              : undefined,
         } as const;
         const result =
           activeInput === "upload" && selectedFile
@@ -559,7 +609,9 @@ export function QuizBuilderWorkspace({
         setSelectedQuestionId(generated[0]?.id ?? null);
         setGenerationState("success");
         setHasEnteredReview(false);
-        setGenerationDurationLabel(`${Math.max(result.generationTimeSeconds, 1)} sec`);
+        setGenerationDurationLabel(
+          `${Math.max(result.generationTimeSeconds, 1)} sec`,
+        );
         setQuestionSeed((value) => value + 1);
       } catch (error) {
         if (isCancelled) {
@@ -628,6 +680,29 @@ export function QuizBuilderWorkspace({
       }
 
       if (
+        question.questionType === "Multiple choice" &&
+        question.options.filter((option) => option.trim()).length < 2
+      ) {
+        issues.push({
+          id: `${question.id}-missing-options`,
+          questionId: question.id,
+          tone: "danger",
+          label: `Question ${index + 1} needs answer options`,
+          detail: "Add at least two non-empty answer options before saving.",
+        });
+      }
+
+      if (question.options.some((option) => !option.trim())) {
+        issues.push({
+          id: `${question.id}-empty-option`,
+          questionId: question.id,
+          tone: "danger",
+          label: `Question ${index + 1} has an empty option`,
+          detail: "Fill in every answer option or remove the empty one.",
+        });
+      }
+
+      if (
         getQuestionCorrectIndexes(question).some(
           (correctIndex) =>
             correctIndex < 0 || correctIndex >= question.options.length,
@@ -644,18 +719,19 @@ export function QuizBuilderWorkspace({
       }
 
       if (
-        question.selectionMode === "multiple" &&
-        getQuestionCorrectIndexes(question).length < 2
+        question.selectionMode === "single" &&
+        getQuestionCorrectIndexes(question).length !== 1
       ) {
         issues.push({
-          id: `${question.id}-multiple-answer-selection`,
+          id: `${question.id}-single-answer-selection`,
           questionId: question.id,
-          tone: "warning",
-          label: `Question ${index + 1} needs at least two correct answers`,
-          detail:
-            "If multiple-answer mode is enabled, mark at least two answers as correct.",
+          tone: "danger",
+          label: `Question ${index + 1} needs exactly one correct answer`,
+          detail: "Single-choice questions must have one correct option.",
         });
       }
+
+
 
       if (duplicateOptionCount) {
         issues.push({
@@ -865,38 +941,41 @@ export function QuizBuilderWorkspace({
       return;
     }
 
-    const fileName = resolvedQuizTitle
-      .trim()
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-+|-+$/g, "") || "bilgenly-quiz";
+    const fileName =
+      resolvedQuizTitle
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "") || "bilgenly-quiz";
     const content =
       format === "json"
         ? JSON.stringify(payload, null, 2)
         : format === "xml"
           ? buildMoodleQuizXml(payload)
           : [
-            `Title: ${payload.title}`,
-            `Topic: ${payload.topic}`,
-            `Visibility: ${payload.visibility}`,
-            "",
-            ...payload.questions.flatMap((question, index) => [
-              `Q${index + 1}. ${question.text}`,
-              `Type: ${question.questionType ?? "Multiple choice"} | Mode: ${
-                question.selectionMode ?? "single"
-              } | Points: ${question.points ?? 1}`,
-              ...question.options.map((option, optionIndex) => {
-                const correctIndexes =
-                  question.selectionMode === "multiple"
-                    ? question.correctIndexes ?? [question.correctIndex]
-                    : [question.correctIndex];
-                const marker = correctIndexes.includes(optionIndex) ? "[correct]" : "[ ]";
-                return `  ${marker} ${option}`;
-              }),
-              `Explanation: ${question.explanation ?? "None"}`,
+              `Title: ${payload.title}`,
+              `Topic: ${payload.topic}`,
+              `Visibility: ${payload.visibility}`,
               "",
-            ]),
-          ].join("\n");
+              ...payload.questions.flatMap((question, index) => [
+                `Q${index + 1}. ${question.text}`,
+                `Type: ${question.questionType ?? "Multiple choice"} | Mode: ${
+                  question.selectionMode ?? "single"
+                } | Points: ${question.points ?? 1}`,
+                ...question.options.map((option, optionIndex) => {
+                  const correctIndexes =
+                    question.selectionMode === "multiple"
+                      ? (question.correctIndexes ?? [question.correctIndex])
+                      : [question.correctIndex];
+                  const marker = correctIndexes.includes(optionIndex)
+                    ? "[correct]"
+                    : "[ ]";
+                  return `  ${marker} ${option}`;
+                }),
+                `Explanation: ${question.explanation ?? "None"}`,
+                "",
+              ]),
+            ].join("\n");
 
     const blob = new Blob([content], {
       type:
@@ -950,6 +1029,7 @@ export function QuizBuilderWorkspace({
         {
           ...source,
           id: createQuestionId(),
+          optionIds: undefined,
           text: `${source.text} (copy)`,
           status: "edited",
         },
@@ -1023,29 +1103,8 @@ export function QuizBuilderWorkspace({
       return null;
     }
 
-    const normalizedQuestions: QuizQuestionRecord[] = questions.map(
-      (question) => ({
-        id: question.id,
-        text: question.text.trim(),
-        options: question.options.map((option) => option.trim()),
-        correctIndex: question.correctIndex,
-        correctIndexes:
-          question.selectionMode === "multiple"
-            ? getQuestionCorrectIndexes(question)
-            : undefined,
-        questionType: question.questionType,
-        selectionMode: question.selectionMode,
-        explanation: question.explanation.trim() || undefined,
-        imageEnabled: question.imageEnabled,
-        imageUrl: question.imageUrl,
-        points: Math.max(1, Math.round(question.points)),
-        estimatedMinutes: Math.max(
-          1,
-          Math.round(question.estimatedMinutes),
-        ),
-        answerOrder: question.answerOrder,
-        required: question.required,
-      }),
+    const normalizedQuestions = questions.map(
+      mapGeneratedQuestionToQuizQuestionRecord,
     );
     const topic = focus.trim() || "General review";
     const durationMinutes = Math.max(
@@ -1062,7 +1121,9 @@ export function QuizBuilderWorkspace({
       existingQuizId: generatedBackendQuizId ?? editingQuiz?.id,
       ownerRole: mode,
       title: resolvedQuizTitle,
-      description: buildQuizDescription(parsedSource.extractedText, topic),
+      description:
+        quizDescription.trim() ||
+        buildQuizDescription(parsedSource.extractedText, topic),
       topic,
       difficulty: getQuizDifficulty(normalizedQuestions.length),
       language: resolvedLanguage,
@@ -1097,48 +1158,74 @@ export function QuizBuilderWorkspace({
   }
 
   async function saveQuizRecord(targetStatus: QuizLibraryStatus) {
+    if (!resolvedQuizTitle.trim()) {
+      throw new Error("Quiz title is required.");
+    }
+
+    const blockingIssue = validationIssues.find(
+      (issue) => issue.tone === "danger",
+    );
+    if (blockingIssue) {
+      setSelectedQuestionId(blockingIssue.questionId);
+      throw new Error(blockingIssue.detail);
+    }
+
     const payload = buildQuizSavePayload(targetStatus);
 
     if (!payload) {
-      return null;
-    }
-
-    if (
-      mode === "teacher" &&
-      payload.questions.some(
-        (question) =>
-          question.selectionMode === "multiple" &&
-          getQuestionCorrectIndexes(question as GeneratedQuestion).length > 1,
-      )
-    ) {
-      throw new Error(
-        "The backend attempt flow does not support multiple-answer questions yet.",
-      );
+      throw new Error("Add at least one valid question before saving.");
     }
 
     if (mode === "teacher" && generatedBackendQuizId) {
-      await saveGeneratedQuizReview(generatedBackendQuizId, {
+      const guidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      const reviewResult = await saveGeneratedQuizReview(generatedBackendQuizId, {
         title: payload.title,
         description: payload.description,
         isPublic: payload.visibility === "public",
         questions: payload.questions.map((question, index) => ({
-          id: question.id,
+          id: guidPattern.test(question.id ?? "") ? question.id : undefined,
           text: question.text,
-          questionType: question.questionType === "True/False" ? "TrueFalse" : "MCQ",
+          questionType:
+            question.questionType === "True/False" ? "TrueFalse" : "MCQ",
           explanation: question.explanation ?? "",
           position: index + 1,
-          answers: question.options.map((option, optionIndex) => ({
-            text: option,
-            isCorrect: getQuestionCorrectIndexes(question).includes(optionIndex),
-          })),
+          answers: question.options.map((option, optionIndex) => {
+            const optionId = question.optionIds?.[optionIndex];
+
+            return {
+              id: optionId && guidPattern.test(optionId) ? optionId : undefined,
+              text: option,
+              isCorrect:
+                getQuizRecordCorrectIndexes(question).includes(optionIndex),
+            };
+          }),
         })),
       });
+
+      const savedQuestions = mapGeneratedResultToQuestions(reviewResult);
+      const savedPayload = {
+        ...payload,
+        existingQuizId: reviewResult.quizId,
+        questionCount: savedQuestions.length,
+        questions: savedQuestions.map(mapGeneratedQuestionToQuizQuestionRecord),
+      };
+
+      setGeneratedBackendQuizId(reviewResult.quizId);
+      setQuestions(savedQuestions);
+      setSelectedQuestionId(savedQuestions[0]?.id ?? null);
+
+      return saveGeneratedQuiz(savedPayload);
     }
 
     return saveGeneratedQuiz(payload);
   }
 
   async function handleSaveQuiz(targetStatus: QuizLibraryStatus) {
+    if (!resolvedQuizTitle.trim()) {
+      setGenerationError("Quiz title is required before saving.");
+      return;
+    }
+
     try {
       const savedQuiz = await saveQuizRecord(targetStatus);
 
@@ -1146,26 +1233,20 @@ export function QuizBuilderWorkspace({
         return;
       }
 
+      const libraryTab = targetStatus === "draft" ? "drafts" : "my-quizzes";
       navigate(
         mode === "teacher"
           ? "/dashboard/teacher/quiz-library"
           : "/dashboard/student/quiz-library",
-        {
-          state: {
-            libraryTab:
-              mode === "teacher"
-                ? targetStatus === "draft"
-                  ? "drafts"
-                  : "my-quizzes"
-                : targetStatus === "draft"
-                  ? "drafts"
-                  : "my-quizzes",
-          },
-        },
+        { state: { libraryTab } },
       );
     } catch (error) {
       setGenerationError(
         error instanceof Error ? error.message : "Unable to save this quiz.",
+      );
+      console.error(
+        "Quiz save failed:",
+        error instanceof Error ? error.message : error,
       );
     }
   }
@@ -1225,11 +1306,7 @@ export function QuizBuilderWorkspace({
           : dashboardPageCenteredClassName
       }
     >
-      <DashboardPageHeader
-        title={title}
-        subtitle={subtitle}
-        align="center"
-      />
+      <DashboardPageHeader title={title} subtitle={subtitle} align="center" />
 
       <QuizBuilderStepper currentStepIndex={currentStepIndex} />
 
@@ -1266,21 +1343,15 @@ export function QuizBuilderWorkspace({
               canGenerate={canGenerate}
               contextValue={contextValue}
               copy={copy}
-              focus={focus}
               handleGenerateQuiz={handleGenerateQuiz}
               handleReplaceSource={handleReplaceSource}
-              instructions={instructions}
               mode={mode}
               parsedSource={parsedSource}
               questionCount={questionCount}
-              questionTypes={questionTypes}
               quizTitle={quizTitle}
               setContextValue={setContextValue}
-              setFocus={setFocus}
-              setInstructions={setInstructions}
               setQuestionCount={setQuestionCount}
               setQuizTitle={setQuizTitle}
-              toggleQuestionType={toggleQuestionType}
             />
           ) : null}
 
@@ -1307,7 +1378,11 @@ export function QuizBuilderWorkspace({
 
           {workspaceStage === "review" ? (
             <div className="space-y-6">
-              <DashboardSurface radius="xl" padding="none" className="overflow-hidden">
+              <DashboardSurface
+                radius="xl"
+                padding="none"
+                className="overflow-hidden"
+              >
                 <section className="grid xl:grid-cols-[280px_minmax(0,1fr)]">
                   <input
                     ref={questionImageInputRef}
@@ -1318,7 +1393,7 @@ export function QuizBuilderWorkspace({
                   />
                   <div className="border-b border-[var(--dashboard-border-soft)] bg-[var(--dashboard-surface-elevated)] px-5 py-4 xl:col-span-2 xl:px-6">
                     <div className="flex flex-wrap items-center justify-between gap-4">
-                      <div className="flex min-w-0 items-center gap-3">
+                      <div className="flex min-w-0 flex-1 items-start gap-3">
                         <DashboardButton
                           type="button"
                           variant="ghost"
@@ -1329,9 +1404,44 @@ export function QuizBuilderWorkspace({
                         >
                           <ChevronRight className="h-4.5 w-4.5 rotate-180" />
                         </DashboardButton>
-                        <h2 className="truncate text-[1.35rem] font-semibold text-[var(--dashboard-text-strong)]">
-                          {resolvedQuizTitle}
-                        </h2>
+                        <div className="min-w-0 flex-1 space-y-2">
+                          <input
+                            type="text"
+                            value={quizTitle}
+                            onChange={(event) =>
+                              setQuizTitle(event.target.value)
+                            }
+                            placeholder="Quiz title"
+                            aria-label="Quiz title"
+                            className={cn(
+                              dashboardInputVariants({ size: "lg" }),
+                              "h-11 w-full border-0 bg-transparent px-0 text-[1.35rem] font-semibold text-[var(--dashboard-text-strong)] shadow-none focus-visible:ring-0",
+                            )}
+                          />
+                          {!quizTitle.trim() ? (
+                            <p className="text-xs text-[var(--dashboard-danger)]">
+                              Quiz title is required.
+                            </p>
+                          ) : null}
+                          {generationError ? (
+                            <p className="text-xs text-[var(--dashboard-danger)]">
+                              {generationError}
+                            </p>
+                          ) : null}
+                          <textarea
+                            value={quizDescription}
+                            onChange={(event) =>
+                              setQuizDescription(event.target.value)
+                            }
+                            placeholder="Add a short description for this quiz (optional)."
+                            aria-label="Quiz description"
+                            rows={2}
+                            className={cn(
+                              dashboardTextareaVariants({ size: "sm" }),
+                              "min-h-[44px] w-full border-0 bg-transparent px-0 text-sm text-[var(--dashboard-text-soft)] shadow-none focus-visible:ring-0",
+                            )}
+                          />
+                        </div>
                       </div>
 
                       <div className="flex flex-wrap items-center justify-end gap-2">
@@ -1391,10 +1501,12 @@ export function QuizBuilderWorkspace({
                             Questions ({questions.length})
                           </p>
                           <p className="hidden mt-1 text-sm text-[var(--dashboard-text-soft)]">
-                            {reviewedQuestionCount} edited · {validationIssues.length} issues
+                            {reviewedQuestionCount} edited ·{" "}
+                            {validationIssues.length} issues
                           </p>
                           <p className="mt-1 text-sm text-[var(--dashboard-text-soft)]">
-                            {reviewedQuestionCount} edited | {validationIssues.length} issues
+                            {reviewedQuestionCount} edited |{" "}
+                            {validationIssues.length} issues
                           </p>
                         </div>
                         <DashboardButton
@@ -1419,7 +1531,9 @@ export function QuizBuilderWorkspace({
                               <button
                                 key={question.id}
                                 type="button"
-                                onClick={() => setSelectedQuestionId(question.id)}
+                                onClick={() =>
+                                  setSelectedQuestionId(question.id)
+                                }
                                 className={cn(
                                   "relative w-full rounded-[18px] border px-4 py-4 text-left transition",
                                   selectedQuestion?.id === question.id
@@ -1441,10 +1555,13 @@ export function QuizBuilderWorkspace({
                                       {question.text}
                                     </h3>
                                     <p className="hidden mt-2 text-xs text-[var(--dashboard-text-soft)]">
-                                      {question.options.length} choices · correct answer {question.correctIndex + 1}
+                                      {question.options.length} choices ·
+                                      correct answer {question.correctIndex + 1}
                                     </p>
                                     <p className="mt-2 text-xs text-[var(--dashboard-text-soft)]">
-                                      {question.options.length} choices | {Math.max(1, Math.round(question.points))} pts
+                                      {question.options.length} choices |{" "}
+                                      {Math.max(1, Math.round(question.points))}{" "}
+                                      pts
                                     </p>
                                   </div>
 
@@ -1500,20 +1617,26 @@ export function QuizBuilderWorkspace({
                                     >
                                       <MoreHorizontal className="h-4 w-4" />
                                     </DashboardButton>
-                                    {openQuestionMenuId === `rail-${question.id}` ? (
+                                    {openQuestionMenuId ===
+                                    `rail-${question.id}` ? (
                                       <div className="absolute right-0 top-9 z-20 w-40 rounded-[16px] border border-[var(--dashboard-border-soft)] bg-[var(--dashboard-surface-elevated)] p-2 shadow-[var(--dashboard-shadow-card)]">
                                         {[
-                                          { label: "Move up", action: "up" as const },
-                                          { label: "Move down", action: "down" as const },
+                                          {
+                                            label: "Move up",
+                                            action: "up" as const,
+                                          },
+                                          {
+                                            label: "Move down",
+                                            action: "down" as const,
+                                          },
                                           {
                                             label: "Duplicate",
                                             action: "duplicate" as const,
                                           },
                                           {
-                                            label: "Regenerate",
-                                            action: "regenerate" as const,
+                                            label: "Delete",
+                                            action: "delete" as const,
                                           },
-                                          { label: "Delete", action: "delete" as const },
                                         ].map((item) => (
                                           <button
                                             key={item.label}
@@ -1606,10 +1729,14 @@ export function QuizBuilderWorkspace({
                                         ),
                                     )
                                   }
-                                  className="appearance-none bg-transparent pr-1 text-sm font-medium text-[var(--dashboard-text-strong)] outline-none"
+                                  className="appearance-none pr-1 text-sm font-medium text-[var(--dashboard-text-strong)] outline-none"
+                                  style={{ background: "var(--dashboard-surface-muted)", colorScheme: "dark" }}
                                 >
                                   {questionTypeOptions.map((questionType) => (
-                                    <option key={questionType} value={questionType}>
+                                    <option
+                                      key={questionType}
+                                      value={questionType}
+                                    >
                                       {questionType}
                                     </option>
                                   ))}
@@ -1662,20 +1789,23 @@ export function QuizBuilderWorkspace({
                               >
                                 <MoreHorizontal className="h-4 w-4" />
                               </DashboardButton>
-                              {openQuestionMenuId === `editor-${selectedQuestion.id}` ? (
+                              {openQuestionMenuId ===
+                              `editor-${selectedQuestion.id}` ? (
                                 <div className="absolute right-0 top-10 z-20 w-44 rounded-[16px] border border-[var(--dashboard-border-soft)] bg-[var(--dashboard-surface-elevated)] p-2 shadow-[var(--dashboard-shadow-card)]">
                                   {[
-                                    {
-                                      label: "Regenerate",
-                                      action: "regenerate" as const,
-                                    },
                                     {
                                       label: "Duplicate",
                                       action: "duplicate" as const,
                                     },
                                     { label: "Move up", action: "up" as const },
-                                    { label: "Move down", action: "down" as const },
-                                    { label: "Delete", action: "delete" as const },
+                                    {
+                                      label: "Move down",
+                                      action: "down" as const,
+                                    },
+                                    {
+                                      label: "Delete",
+                                      action: "delete" as const,
+                                    },
                                   ].map((item) => (
                                     <button
                                       key={item.label}
@@ -1703,19 +1833,7 @@ export function QuizBuilderWorkspace({
                               </p>
                             </div>
 
-                            <div className="flex flex-wrap gap-2">
-                              <DashboardButton
-                                type="button"
-                                variant="secondary"
-                                size="sm"
-                                onClick={() =>
-                                  handleRegenerateQuestion(selectedQuestion.id)
-                                }
-                              >
-                                <Wand2 className="h-4 w-4" />
-                                Regenerate
-                              </DashboardButton>
-                            </div>
+                            <div className="flex flex-wrap gap-2" />
                           </div>
 
                           <div className="mt-6 grid gap-5 xl:grid-cols-[minmax(0,1fr)_260px] xl:pl-6">
@@ -1748,107 +1866,15 @@ export function QuizBuilderWorkspace({
                               </label>
 
                               <div className="space-y-3">
-                                <div className="flex flex-wrap items-center gap-4 text-sm">
-                                  <span className="font-semibold text-[var(--dashboard-text-strong)]">
-                                    Choices*
-                                  </span>
-                                  <button
-                                    type="button"
-                                    className="inline-flex items-center gap-2 text-[var(--dashboard-text-soft)]"
-                                    onClick={() =>
-                                      handleQuestionChange(
-                                        selectedQuestion.id,
-                                        (question) =>
-                                          applyCorrectIndexes(
-                                            {
-                                              ...question,
-                                              selectionMode:
-                                                question.selectionMode === "multiple"
-                                                  ? "single"
-                                                  : "multiple",
-                                            },
-                                            question.selectionMode === "multiple"
-                                              ? [getQuestionCorrectIndexes(question)[0] ?? 0]
-                                              : Array.from(
-                                                  new Set([
-                                                    ...getQuestionCorrectIndexes(question),
-                                                    Math.min(1, question.options.length - 1),
-                                                  ]),
-                                                ),
-                                          ),
-                                      )
-                                    }
-                                  >
-                                    <span>Multiple answer</span>
-                                    <span
-                                      className={cn(
-                                        "flex h-6 w-10 items-center rounded-full px-1 transition",
-                                        selectedQuestion.selectionMode === "multiple"
-                                          ? "bg-[#19b79f]"
-                                          : "bg-[var(--dashboard-surface-muted)]",
-                                      )}
-                                    >
-                                      <span
-                                        className={cn(
-                                          "h-4 w-4 rounded-full bg-white shadow-sm transition",
-                                          selectedQuestion.selectionMode === "multiple"
-                                            ? "ml-auto"
-                                            : "",
-                                        )}
-                                      />
-                                    </span>
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className="inline-flex items-center gap-2 text-[var(--dashboard-text-soft)]"
-                                    onClick={() => {
-                                      if (selectedQuestion.imageEnabled) {
-                                        handleQuestionChange(
-                                          selectedQuestion.id,
-                                          (question) => ({
-                                            ...question,
-                                            imageEnabled: false,
-                                            imageUrl: undefined,
-                                          }),
-                                        );
-                                        return;
-                                      }
-
-                                      handleQuestionChange(
-                                        selectedQuestion.id,
-                                        (question) => ({
-                                          ...question,
-                                          imageEnabled: true,
-                                        }),
-                                      );
-                                    }}
-                                  >
-                                    <span>Answer with image</span>
-                                    <span
-                                      className={cn(
-                                        "flex h-6 w-10 items-center rounded-full px-1 transition",
-                                        selectedQuestion.imageEnabled
-                                          ? "bg-[#19b79f]"
-                                          : "bg-[var(--dashboard-surface-muted)]",
-                                      )}
-                                    >
-                                      <span
-                                        className={cn(
-                                          "h-4 w-4 rounded-full bg-white shadow-sm transition",
-                                          selectedQuestion.imageEnabled ? "ml-auto" : "",
-                                        )}
-                                      />
-                                    </span>
-                                  </button>
-                                </div>
-
                                 {selectedQuestion.options.map(
                                   (option, optionIndex) => (
                                     <div
                                       key={`${selectedQuestion.id}-${optionIndex}`}
                                       onDragOver={(event) => {
                                         event.preventDefault();
-                                        if (dragOverOptionIndex !== optionIndex) {
+                                        if (
+                                          dragOverOptionIndex !== optionIndex
+                                        ) {
                                           setDragOverOptionIndex(optionIndex);
                                         }
                                       }}
@@ -1885,7 +1911,8 @@ export function QuizBuilderWorkspace({
                                         draggingOptionIndex === optionIndex
                                           ? "opacity-70"
                                           : "",
-                                        selectedQuestion.correctIndex === optionIndex
+                                        selectedQuestion.correctIndex ===
+                                          optionIndex
                                           ? "border-[var(--dashboard-success)]/35 bg-[var(--dashboard-success-soft)]/55"
                                           : "border-[var(--dashboard-border-soft)] bg-[var(--dashboard-surface-muted)]",
                                         dragOverOptionIndex === optionIndex &&
@@ -1897,7 +1924,8 @@ export function QuizBuilderWorkspace({
                                     >
                                       <input
                                         type={
-                                          selectedQuestion.selectionMode === "multiple"
+                                          selectedQuestion.selectionMode ===
+                                          "multiple"
                                             ? "checkbox"
                                             : "radio"
                                         }
@@ -1908,18 +1936,24 @@ export function QuizBuilderWorkspace({
                                           handleQuestionChange(
                                             selectedQuestion.id,
                                             (question) => {
-                                              if (question.selectionMode === "multiple") {
+                                              if (
+                                                question.selectionMode ===
+                                                "multiple"
+                                              ) {
                                                 const nextCorrectIndexes =
-                                                  getQuestionCorrectIndexes(question).includes(
-                                                    optionIndex,
-                                                  )
+                                                  getQuestionCorrectIndexes(
+                                                    question,
+                                                  ).includes(optionIndex)
                                                     ? getQuestionCorrectIndexes(
                                                         question,
                                                       ).filter(
-                                                        (index) => index !== optionIndex,
+                                                        (index) =>
+                                                          index !== optionIndex,
                                                       )
                                                     : [
-                                                        ...getQuestionCorrectIndexes(question),
+                                                        ...getQuestionCorrectIndexes(
+                                                          question,
+                                                        ),
                                                         optionIndex,
                                                       ];
 
@@ -1929,9 +1963,10 @@ export function QuizBuilderWorkspace({
                                                 );
                                               }
 
-                                              return applyCorrectIndexes(question, [
-                                                optionIndex,
-                                              ]);
+                                              return applyCorrectIndexes(
+                                                question,
+                                                [optionIndex],
+                                              );
                                             },
                                           )
                                         }
@@ -1956,9 +1991,13 @@ export function QuizBuilderWorkspace({
                                             }),
                                           )
                                         }
-                                        maxLength={QUIZ_BUILDER_LIMITS.optionText}
+                                        maxLength={
+                                          QUIZ_BUILDER_LIMITS.optionText
+                                        }
                                         className={cn(
-                                          dashboardInputVariants({ size: "md" }),
+                                          dashboardInputVariants({
+                                            size: "md",
+                                          }),
                                           "border-none bg-[var(--dashboard-surface-elevated)]",
                                         )}
                                       />
@@ -1966,7 +2005,8 @@ export function QuizBuilderWorkspace({
                                         type="button"
                                         draggable
                                         onDragStart={(event) => {
-                                          event.dataTransfer.effectAllowed = "move";
+                                          event.dataTransfer.effectAllowed =
+                                            "move";
                                           setDraggingOptionIndex(optionIndex);
                                           setDragOverOptionIndex(optionIndex);
                                         }}
@@ -1990,15 +2030,20 @@ export function QuizBuilderWorkspace({
                                             (question) => {
                                               const nextQuestion = {
                                                 ...question,
-                                                options: question.options.filter(
-                                                  (_, candidateIndex) =>
-                                                    candidateIndex !== optionIndex,
-                                                ),
+                                                options:
+                                                  question.options.filter(
+                                                    (_, candidateIndex) =>
+                                                      candidateIndex !==
+                                                      optionIndex,
+                                                  ),
                                               };
                                               const nextCorrectIndexes =
-                                                getQuestionCorrectIndexes(question)
+                                                getQuestionCorrectIndexes(
+                                                  question,
+                                                )
                                                   .filter(
-                                                    (index) => index !== optionIndex,
+                                                    (index) =>
+                                                      index !== optionIndex,
                                                   )
                                                   .map((index) =>
                                                     index > optionIndex
@@ -2013,7 +2058,9 @@ export function QuizBuilderWorkspace({
                                             },
                                           )
                                         }
-                                        disabled={selectedQuestion.options.length <= 2}
+                                        disabled={
+                                          selectedQuestion.options.length <= 2
+                                        }
                                       >
                                         <Trash2 className="h-4 w-4 text-[#ef4444]" />
                                       </DashboardButton>
@@ -2025,7 +2072,10 @@ export function QuizBuilderWorkspace({
                                   type="button"
                                   variant="secondary"
                                   size="sm"
-                                  disabled={selectedQuestion.questionType === "True/False"}
+                                  disabled={
+                                    selectedQuestion.questionType ===
+                                    "True/False"
+                                  }
                                   onClick={() =>
                                     handleQuestionChange(
                                       selectedQuestion.id,
@@ -2059,7 +2109,8 @@ export function QuizBuilderWorkspace({
                                       <div className="flex h-[180px] flex-col items-center justify-center gap-3 bg-[linear-gradient(180deg,#8adcf2_0%,#64cce8_100%)] px-4 text-center">
                                         <Camera className="h-8 w-8 text-white" />
                                         <p className="max-w-[180px] text-sm leading-6 text-white/90">
-                                          Add an image to make the question more visual.
+                                          Add an image to make the question more
+                                          visual.
                                         </p>
                                       </div>
                                     )}
@@ -2201,13 +2252,16 @@ export function QuizBuilderWorkspace({
                                   Source summary
                                 </p>
                                 <p className="hidden mt-2 text-sm leading-6 text-[var(--dashboard-text-soft)]">
-                                  {parsedSource?.label ?? "Generated source"} · {focus || "General review"}
+                                  {parsedSource?.label ?? "Generated source"} ·{" "}
+                                  {focus || "General review"}
                                 </p>
                                 <p className="mt-2 text-sm leading-6 text-[var(--dashboard-text-soft)]">
-                                  {parsedSource?.label ?? "Generated source"} | {focus || "General review"}
+                                  {parsedSource?.label ?? "Generated source"} |{" "}
+                                  {focus || "General review"}
                                 </p>
                                 <p className="mt-3 text-sm leading-6 text-[var(--dashboard-text-soft)]">
-                                  Use this side panel to keep the educational explanation aligned with the source material.
+                                  Use this side panel to keep the educational
+                                  explanation aligned with the source material.
                                 </p>
                               </div>
                             </div>
@@ -2252,16 +2306,17 @@ export function QuizBuilderWorkspace({
                                 <input
                                   type="number"
                                   min={1}
+                                  max={60}
                                   value={selectedQuestion.estimatedMinutes}
                                   onChange={(event) =>
                                     handleQuestionChange(
                                       selectedQuestion.id,
                                       (question) => ({
                                         ...question,
-                                        estimatedMinutes: Math.max(
+                                        estimatedMinutes: Math.min(60, Math.max(
                                           1,
                                           Number(event.target.value) || 1,
-                                        ),
+                                        )),
                                       }),
                                     )
                                   }
@@ -2271,7 +2326,7 @@ export function QuizBuilderWorkspace({
                                   )}
                                 />
                                 <span className="text-sm text-[var(--dashboard-text-soft)]">
-                                  Mins
+                                  Mins (max 60)
                                 </span>
                               </div>
                             </label>
@@ -2284,16 +2339,17 @@ export function QuizBuilderWorkspace({
                                 <input
                                   type="number"
                                   min={1}
+                                  max={10}
                                   value={selectedQuestion.points}
                                   onChange={(event) =>
                                     handleQuestionChange(
                                       selectedQuestion.id,
                                       (question) => ({
                                         ...question,
-                                        points: Math.max(
+                                        points: Math.min(100, Math.max(
                                           1,
                                           Number(event.target.value) || 1,
-                                        ),
+                                        )),
                                       }),
                                     )
                                   }
@@ -2303,7 +2359,7 @@ export function QuizBuilderWorkspace({
                                   )}
                                 />
                                 <span className="text-sm text-[var(--dashboard-text-soft)]">
-                                  Points
+                                  Points (max 100)
                                 </span>
                               </div>
                             </label>
@@ -2311,7 +2367,8 @@ export function QuizBuilderWorkspace({
 
                           <div className="mt-6 flex flex-wrap items-center justify-between gap-3 border-t border-[var(--dashboard-border-soft)] pt-5">
                             <div className="text-sm text-[var(--dashboard-text-soft)]">
-                              Reorder questions from the left rail, or move through them here while editing.
+                              Reorder questions from the left rail, or move
+                              through them here while editing.
                             </div>
 
                             <div className="flex gap-2">
@@ -2321,8 +2378,9 @@ export function QuizBuilderWorkspace({
                                 size="sm"
                                 onClick={() =>
                                   setSelectedQuestionId(
-                                    questions[Math.max(0, selectedQuestionIndex - 1)]
-                                      ?.id ?? selectedQuestion.id,
+                                    questions[
+                                      Math.max(0, selectedQuestionIndex - 1)
+                                    ]?.id ?? selectedQuestion.id,
                                   )
                                 }
                               >
@@ -2355,7 +2413,8 @@ export function QuizBuilderWorkspace({
                           Select a question to edit
                         </p>
                         <p className="mt-2 text-sm leading-6 text-[var(--dashboard-text-soft)]">
-                          Pick any item from the left rail to open its full editor.
+                          Pick any item from the left rail to open its full
+                          editor.
                         </p>
                       </div>
                     )}

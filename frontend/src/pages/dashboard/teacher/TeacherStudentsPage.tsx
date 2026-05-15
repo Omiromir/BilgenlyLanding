@@ -102,6 +102,7 @@ export function TeacherStudentsPage() {
     () => classes.filter((teacherClass) => teacherClass.status === "active"),
     [classes],
   );
+
   const [classFilter, setClassFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] =
     useState<"all" | TeacherClassStudentStatus>("all");
@@ -116,20 +117,16 @@ export function TeacherStudentsPage() {
   const rosterRows = useMemo<TeacherStudentRosterRow[]>(
     () =>
       classes.flatMap((teacherClass) =>
-        teacherClass.students.map((student) => {
-          const metadata = buildStudentRosterMetadata(student);
-
-          return {
-            rowId: `${teacherClass.id}-${student.id}`,
-            classId: teacherClass.id,
-            className: teacherClass.name,
-            classSubject: teacherClass.subject,
-            inviteCode: teacherClass.inviteCode,
-            quizCount: teacherClass.quizCount,
-            student,
-            ...metadata,
-          };
-        }),
+        teacherClass.students.map((student) => ({
+          rowId: `${teacherClass.id}-${student.id}`,
+          classId: teacherClass.id,
+          className: teacherClass.name,
+          classSubject: teacherClass.subject,
+          inviteCode: teacherClass.inviteCode,
+          quizCount: teacherClass.quizCount,
+          student,
+          ...buildStudentRosterMetadata(student),
+        })),
       ),
     [classes],
   );
@@ -141,7 +138,6 @@ export function TeacherStudentsPage() {
       const matchesStatus =
         statusFilter === "all" ? true : row.student.status === statusFilter;
       const matchesGrade = gradeFilter === "all";
-
       return matchesClass && matchesStatus && matchesGrade;
     });
   }, [deferredClassFilter, gradeFilter, rosterRows, statusFilter]);
@@ -364,12 +360,18 @@ export function TeacherStudentsPage() {
               <label>
                 <select
                   value={gradeFilter}
-                  onChange={() => setGradeFilter("all")}
-                  disabled
+                  onChange={(e) =>
+                    setGradeFilter(
+                      e.target.value as "all" | "high" | "mid" | "needs-attention",
+                    )
+                  }
                   className={`${dashboardSelectVariants({ size: "md" })} h-10 min-w-[130px] rounded-[12px] border-[var(--dashboard-border-soft)] bg-[var(--dashboard-surface-elevated)] px-3 text-sm`}
-                  aria-label="Average grade data is unavailable"
+                  aria-label="Filter by average grade"
                 >
-                  <option value="all">Avg. grade unavailable</option>
+                  <option value="all">All grades</option>
+                  <option value="high">High (≥80%)</option>
+                  <option value="mid">Mid (60–79%)</option>
+                  <option value="needs-attention">Needs attention (&lt;60%)</option>
                 </select>
               </label>
 
